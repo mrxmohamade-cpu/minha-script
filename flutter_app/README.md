@@ -15,7 +15,7 @@
 
 2. أضف ملف `google-services.json` داخل `android/app/` بعد إنشائه من وحدة تحكم Firebase.
 
-3. حدّث قيم `FirebaseOptions` في `lib/firebase_options.dart` ببيانات تطبيقك (يمكن نسخها من إعدادات Firebase > SDK setup & config > Flutter).
+3. حدّث قيم `FirebaseOptions` في `lib/firebase_options.dart` ببيانات تطبيقك (يمكن نسخها من إعدادات Firebase > SDK setup & config > Flutter). تم ملء قيم الويب مسبقًا ببيانات مشروع `cyber-28f04` كمثال.
 
 4. (اختياري للـ iOS) أضف `GoogleService-Info.plist` إلى `ios/Runner` ثم شغّل `pod install` داخل `ios/`.
 
