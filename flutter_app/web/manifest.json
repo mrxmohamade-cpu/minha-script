@@ -1,0 +1,10 @@
+{
+  "name": "Flutter Clean App",
+  "short_name": "FlutterApp",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2196f3",
+  "description": "Clean Flutter web build",
+  "orientation": "portrait-primary"
+}

@@ -1,0 +1,16 @@
+#!/usr/bin/env sh
+
+DIR="$(cd "$(dirname "$0")" && pwd)"
+WRAPPER_JAR="$DIR/gradle/wrapper/gradle-wrapper.jar"
+MAIN_CLASS=org.gradle.wrapper.GradleWrapperMain
+
+if [ -f "$WRAPPER_JAR" ]; then
+  java -Xmx64m -Xms64m -cp "$WRAPPER_JAR" $MAIN_CLASS "$@"
+else
+  if command -v gradle >/dev/null 2>&1; then
+    gradle "$@"
+  else
+    echo "Gradle wrapper jar missing and no system gradle found." >&2
+    exit 1
+  fi
+fi
