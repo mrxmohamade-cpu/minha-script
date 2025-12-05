@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base href="/">
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="Clean Flutter web build">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flutter Clean App</title>
+  <link rel="manifest" href="manifest.json">
+  <script type="module">
+    // Import the functions you need from the SDKs you need
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
+    import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-analytics.js";
+
+    // Your web app's Firebase configuration
+    // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+    const firebaseConfig = {
+      apiKey: "AIzaSyDLWxYqElP_MxCc6Fs1acH_U3lvArIv-TQ",
+      authDomain: "cyber-28f04.firebaseapp.com",
+      projectId: "cyber-28f04",
+      storageBucket: "cyber-28f04.firebasestorage.app",
+      messagingSenderId: "1086663533691",
+      appId: "1:1086663533691:web:d35b102c6a37aa165feede",
+      measurementId: "G-H6HVMJ943X"
+    };
+
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    const analytics = getAnalytics(app);
+  </script>
+</head>
+<body>
+  <script>
+    var serviceWorkerVersion = null;
+  </script>
+  <script src="flutter.js" defer></script>
+  <script src="main.dart.js" type="application/javascript"></script>
+</body>
+</html>
