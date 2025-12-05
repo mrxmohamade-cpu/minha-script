@@ -1,0 +1,1423 @@
+{
+  "log": {
+    "version": "1.2",
+    "creator": {
+      "name": "WebInspector",
+      "version": "537.36"
+    },
+    "pages": [],
+    "entries": [
+      {
+        "_initiator": {
+          "type": "script",
+          "stack": {
+            "callFrames": [
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 396183
+              },
+              {
+                "functionName": "e.exports",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 394336
+              },
+              {
+                "functionName": "e.exports",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 691837
+              },
+              {
+                "functionName": "l.request",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 690479
+              },
+              {
+                "functionName": "r.forEach.l.<computed>",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 690786
+              },
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 393157
+              },
+              {
+                "functionName": "Zt",
+                "scriptId": "5",
+                "url": "https://minha.anem.dz/static/js/main.b6371897.chunk.js",
+                "lineNumber": 0,
+                "columnNumber": 131802
+              },
+              {
+                "functionName": "",
+                "scriptId": "5",
+                "url": "https://minha.anem.dz/static/js/main.b6371897.chunk.js",
+                "lineNumber": 0,
+                "columnNumber": 132074
+              },
+              {
+                "functionName": "d",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 6011
+              },
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 7358
+              },
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 6374
+              },
+              {
+                "functionName": "r",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 18931
+              },
+              {
+                "functionName": "c",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 19134
+              },
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 19193
+              },
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 19074
+              },
+              {
+                "functionName": "",
+                "scriptId": "5",
+                "url": "https://minha.anem.dz/static/js/main.b6371897.chunk.js",
+                "lineNumber": 0,
+                "columnNumber": 132443
+              },
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 311347
+              },
+              {
+                "functionName": "",
+                "scriptId": "5",
+                "url": "https://minha.anem.dz/static/js/main.b6371897.chunk.js",
+                "lineNumber": 0,
+                "columnNumber": 144562
+              },
+              {
+                "functionName": "d",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 6011
+              },
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 7358
+              },
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 6374
+              },
+              {
+                "functionName": "r",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 18931
+              },
+              {
+                "functionName": "c",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 19134
+              },
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 19193
+              },
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 19074
+              },
+              {
+                "functionName": "",
+                "scriptId": "5",
+                "url": "https://minha.anem.dz/static/js/main.b6371897.chunk.js",
+                "lineNumber": 0,
+                "columnNumber": 144644
+              },
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 142397
+              },
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 145071
+              },
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 141680
+              }
+            ],
+            "parent": {
+              "description": "Promise.then",
+              "callFrames": [
+                {
+                  "functionName": "",
+                  "scriptId": "8",
+                  "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                  "lineNumber": 1,
+                  "columnNumber": 141578
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "8",
+                  "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                  "lineNumber": 1,
+                  "columnNumber": 145071
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "8",
+                  "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                  "lineNumber": 1,
+                  "columnNumber": 142077
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "8",
+                  "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                  "lineNumber": 1,
+                  "columnNumber": 145071
+                },
+                {
+                  "functionName": "We",
+                  "scriptId": "8",
+                  "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                  "lineNumber": 1,
+                  "columnNumber": 539907
+                },
+                {
+                  "functionName": "Ke",
+                  "scriptId": "8",
+                  "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                  "lineNumber": 1,
+                  "columnNumber": 540061
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "8",
+                  "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                  "lineNumber": 1,
+                  "columnNumber": 558286
+                },
+                {
+                  "functionName": "Er",
+                  "scriptId": "8",
+                  "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                  "lineNumber": 1,
+                  "columnNumber": 558380
+                },
+                {
+                  "functionName": "Pr",
+                  "scriptId": "8",
+                  "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                  "lineNumber": 1,
+                  "columnNumber": 558795
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "8",
+                  "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                  "lineNumber": 1,
+                  "columnNumber": 564443
+                },
+                {
+                  "functionName": "Ne",
+                  "scriptId": "8",
+                  "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                  "lineNumber": 1,
+                  "columnNumber": 640164
+                },
+                {
+                  "functionName": "",
+                  "scriptId": "8",
+                  "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                  "lineNumber": 1,
+                  "columnNumber": 560263
+                },
+                {
+                  "functionName": "_r",
+                  "scriptId": "8",
+                  "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                  "lineNumber": 1,
+                  "columnNumber": 560293
+                },
+                {
+                  "functionName": "Jt",
+                  "scriptId": "8",
+                  "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                  "lineNumber": 1,
+                  "columnNumber": 548339
+                },
+                {
+                  "functionName": "Xt",
+                  "scriptId": "8",
+                  "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                  "lineNumber": 1,
+                  "columnNumber": 547565
+                },
+                {
+                  "functionName": "t.unstable_runWithPriority",
+                  "scriptId": "8",
+                  "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                  "lineNumber": 1,
+                  "columnNumber": 646147
+                },
+                {
+                  "functionName": "$a",
+                  "scriptId": "8",
+                  "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                  "lineNumber": 1,
+                  "columnNumber": 568643
+                },
+                {
+                  "functionName": "Ae",
+                  "scriptId": "8",
+                  "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                  "lineNumber": 1,
+                  "columnNumber": 639903
+                },
+                {
+                  "functionName": "Gt",
+                  "scriptId": "8",
+                  "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                  "lineNumber": 1,
+                  "columnNumber": 547357
+                }
+              ]
+            }
+          }
+        },
+        "_priority": "High",
+        "_resourceType": "xhr",
+        "cache": {},
+        "connection": "60713",
+        "request": {
+          "method": "GET",
+          "url": "https://ac-controle.anem.dz/AllocationChomage/api/validateCandidate/query?wassitNumber=080101031820&identityDocNumber=100010263031820004",
+          "httpVersion": "HTTP/1.1",
+          "headers": [
+            {
+              "name": "Accept",
+              "value": "application/json, text/plain, */*"
+            },
+            {
+              "name": "Accept-Encoding",
+              "value": "gzip, deflate, br, zstd"
+            },
+            {
+              "name": "Accept-Language",
+              "value": "fr-FR,fr;q=0.9,ar-DZ;q=0.8,ar;q=0.7,en-US;q=0.6,en;q=0.5"
+            },
+            {
+              "name": "Cache-Control",
+              "value": "no-cache"
+            },
+            {
+              "name": "Connection",
+              "value": "keep-alive"
+            },
+            {
+              "name": "Host",
+              "value": "ac-controle.anem.dz"
+            },
+            {
+              "name": "Origin",
+              "value": "https://minha.anem.dz"
+            },
+            {
+              "name": "Pragma",
+              "value": "no-cache"
+            },
+            {
+              "name": "Referer",
+              "value": "https://minha.anem.dz/"
+            },
+            {
+              "name": "Sec-Fetch-Dest",
+              "value": "empty"
+            },
+            {
+              "name": "Sec-Fetch-Mode",
+              "value": "cors"
+            },
+            {
+              "name": "Sec-Fetch-Site",
+              "value": "same-site"
+            },
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
+            },
+            {
+              "name": "sec-ch-ua",
+              "value": "\"Not)A;Brand\";v=\"99\", \"Google Chrome\";v=\"127\", \"Chromium\";v=\"127\""
+            },
+            {
+              "name": "sec-ch-ua-mobile",
+              "value": "?0"
+            },
+            {
+              "name": "sec-ch-ua-platform",
+              "value": "\"Windows\""
+            }
+          ],
+          "queryString": [
+            {
+              "name": "wassitNumber",
+              "value": "080101031820"
+            },
+            {
+              "name": "identityDocNumber",
+              "value": "100010263031820004"
+            }
+          ],
+          "cookies": [],
+          "headersSize": 770,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 200,
+          "statusText": "OK",
+          "httpVersion": "HTTP/1.1",
+          "headers": [
+            {
+              "name": "Access-Control-Allow-Credentials",
+              "value": "true"
+            },
+            {
+              "name": "Access-Control-Allow-Headers",
+              "value": "*"
+            },
+            {
+              "name": "Access-Control-Allow-Methods",
+              "value": "GET, POST, PUT, DELETE"
+            },
+            {
+              "name": "Access-Control-Allow-Origin",
+              "value": "*"
+            },
+            {
+              "name": "Content-Length",
+              "value": "899"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Set-Cookie",
+              "value": "cookiesession1=678A3E26274F3F0C7A2FDE2E07B06045;Expires=Thu, 21 May 2026 10:43:34 GMT;Path=/;HttpOnly"
+            }
+          ],
+          "cookies": [
+            {
+              "name": "cookiesession1",
+              "value": "678A3E26274F3F0C7A2FDE2E07B06045",
+              "path": "/",
+              "domain": "ac-controle.anem.dz",
+              "expires": "2026-05-21T10:43:34.000Z",
+              "httpOnly": true,
+              "secure": false
+            }
+          ],
+          "content": {
+            "size": 899,
+            "mimeType": "application/json",
+            "compression": 0,
+            "text": "{\"accepteProtectionData\":false,\"codeControls\":10,\"controls\":[{\"code\":1,\"message\":\"\",\"name\":\"validityDemande\",\"result\":true,\"source\":\"ANEM\"},{\"code\":2,\"message\":\"\",\"name\":\"matchIdentity\",\"result\":true,\"source\":\"ANEM\"},{\"code\":3,\"message\":\"\",\"name\":\"situationServiceMilitaire\",\"result\":true,\"source\":\"ANEM\"},{\"code\":4,\"message\":\"\",\"name\":\"validityAge\",\"result\":true,\"source\":\"ANEM\"},{\"code\":10,\"message\":\"\",\"name\":\"Controle ANEM\",\"result\":true,\"source\":\"MongoDB\"}],\"demandeurId\":\"568563A9-F696-4561-B327-7CF9034A9339\",\"eligible\":true,\"haveAllocation\":false,\"havePreInscription\":true,\"haveRendezVous\":false,\"identiteNeeEtranger\":true,\"newDateControle\":\"\",\"preInscriptionId\":\"905a72dc-5f3d-4cee-93b9-f0644416b37c\",\"processingTime\":84,\"rejetAllocation\":false,\"rendezVousId\":\"\",\"serviceAcUp\":true,\"serviceMdbUp\":true,\"serviceUp\":true,\"structureId\":\"F83AF7FE-4B35-4BB5-92FA-25F11E7936F8\",\"validInput\":true}"
+          },
+          "redirectURL": "",
+          "headersSize": 346,
+          "bodySize": 899,
+          "_transferSize": 1245,
+          "_error": null
+        },
+        "serverIPAddress": "41.111.150.122",
+        "startedDateTime": "2025-05-21T10:42:04.939Z",
+        "time": 272.0899999992879,
+        "timings": {
+          "blocked": 1.1830000000967411,
+          "dns": 0.014000000000000012,
+          "ssl": 67.173,
+          "connect": 115.69200000000001,
+          "send": 0.23099999999999454,
+          "wait": 152.72999999938963,
+          "receive": 2.239999999801512,
+          "_blocked_queueing": 0.45700000009674113
+        }
+      },
+      {
+        "_initiator": {
+          "type": "script",
+          "stack": {
+            "callFrames": [
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 396183
+              },
+              {
+                "functionName": "e.exports",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 394336
+              },
+              {
+                "functionName": "e.exports",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 691837
+              },
+              {
+                "functionName": "l.request",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 690479
+              },
+              {
+                "functionName": "r.forEach.l.<computed>",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 690786
+              },
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 393157
+              },
+              {
+                "functionName": "",
+                "scriptId": "5",
+                "url": "https://minha.anem.dz/static/js/main.b6371897.chunk.js",
+                "lineNumber": 0,
+                "columnNumber": 149773
+              },
+              {
+                "functionName": "d",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 6011
+              },
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 7358
+              },
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 6374
+              },
+              {
+                "functionName": "r",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 18931
+              },
+              {
+                "functionName": "c",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 19134
+              },
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 19193
+              },
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 19074
+              },
+              {
+                "functionName": "",
+                "scriptId": "5",
+                "url": "https://minha.anem.dz/static/js/main.b6371897.chunk.js",
+                "lineNumber": 0,
+                "columnNumber": 149963
+              },
+              {
+                "functionName": "",
+                "scriptId": "5",
+                "url": "https://minha.anem.dz/static/js/main.b6371897.chunk.js",
+                "lineNumber": 0,
+                "columnNumber": 160157
+              },
+              {
+                "functionName": "d",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 6011
+              },
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 7358
+              },
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 6374
+              },
+              {
+                "functionName": "r",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 18931
+              },
+              {
+                "functionName": "c",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 19134
+              },
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 19193
+              },
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 19074
+              },
+              {
+                "functionName": "",
+                "scriptId": "5",
+                "url": "https://minha.anem.dz/static/js/main.b6371897.chunk.js",
+                "lineNumber": 0,
+                "columnNumber": 161004
+              },
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 311347
+              },
+              {
+                "functionName": "",
+                "scriptId": "5",
+                "url": "https://minha.anem.dz/static/js/main.b6371897.chunk.js",
+                "lineNumber": 0,
+                "columnNumber": 159962
+              },
+              {
+                "functionName": "Iu",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 628373
+              },
+              {
+                "functionName": "t.unstable_runWithPriority",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 646147
+              },
+              {
+                "functionName": "$a",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 568643
+              },
+              {
+                "functionName": "Nu",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 627834
+              },
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 627745
+              },
+              {
+                "functionName": "F",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 645206
+              },
+              {
+                "functionName": "j.port1.onmessage",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 643928
+              }
+            ],
+            "parentId": {
+              "id": "10",
+              "debuggerId": "6780605984961258347.8709615390688105520"
+            }
+          }
+        },
+        "_priority": "High",
+        "_resourceType": "xhr",
+        "cache": {},
+        "connection": "60713",
+        "request": {
+          "method": "GET",
+          "url": "https://ac-controle.anem.dz/AllocationChomage/api/PreInscription/GetPreInscription?Id=905a72dc-5f3d-4cee-93b9-f0644416b37c",
+          "httpVersion": "HTTP/1.1",
+          "headers": [
+            {
+              "name": "Accept",
+              "value": "application/json, text/plain, */*"
+            },
+            {
+              "name": "Accept-Encoding",
+              "value": "gzip, deflate, br, zstd"
+            },
+            {
+              "name": "Accept-Language",
+              "value": "fr-FR,fr;q=0.9,ar-DZ;q=0.8,ar;q=0.7,en-US;q=0.6,en;q=0.5"
+            },
+            {
+              "name": "Cache-Control",
+              "value": "no-cache"
+            },
+            {
+              "name": "Connection",
+              "value": "keep-alive"
+            },
+            {
+              "name": "Host",
+              "value": "ac-controle.anem.dz"
+            },
+            {
+              "name": "Origin",
+              "value": "https://minha.anem.dz"
+            },
+            {
+              "name": "Pragma",
+              "value": "no-cache"
+            },
+            {
+              "name": "Referer",
+              "value": "https://minha.anem.dz/"
+            },
+            {
+              "name": "Sec-Fetch-Dest",
+              "value": "empty"
+            },
+            {
+              "name": "Sec-Fetch-Mode",
+              "value": "cors"
+            },
+            {
+              "name": "Sec-Fetch-Site",
+              "value": "same-site"
+            },
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
+            },
+            {
+              "name": "sec-ch-ua",
+              "value": "\"Not)A;Brand\";v=\"99\", \"Google Chrome\";v=\"127\", \"Chromium\";v=\"127\""
+            },
+            {
+              "name": "sec-ch-ua-mobile",
+              "value": "?0"
+            },
+            {
+              "name": "sec-ch-ua-platform",
+              "value": "\"Windows\""
+            }
+          ],
+          "queryString": [
+            {
+              "name": "Id",
+              "value": "905a72dc-5f3d-4cee-93b9-f0644416b37c"
+            }
+          ],
+          "cookies": [],
+          "headersSize": 756,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 200,
+          "statusText": "OK",
+          "httpVersion": "HTTP/1.1",
+          "headers": [
+            {
+              "name": "Access-Control-Allow-Credentials",
+              "value": "true"
+            },
+            {
+              "name": "Access-Control-Allow-Headers",
+              "value": "*"
+            },
+            {
+              "name": "Access-Control-Allow-Methods",
+              "value": "GET, POST, PUT, DELETE"
+            },
+            {
+              "name": "Access-Control-Allow-Origin",
+              "value": "*"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json; charset=utf-8"
+            },
+            {
+              "name": "Date",
+              "value": "Wed, 21 May 2025 10:43:36 GMT"
+            },
+            {
+              "name": "Server",
+              "value": "Microsoft-IIS/10.0"
+            },
+            {
+              "name": "content-length",
+              "value": "368"
+            }
+          ],
+          "cookies": [],
+          "content": {
+            "size": 368,
+            "mimeType": "application/json",
+            "compression": 0,
+            "text": "{\"id\":\"905a72dc-5f3d-4cee-93b9-f0644416b37c\",\"numeroDemandeur\":\"080101031820\",\"dateNaissance\":\"2001-11-25T00:00:00\",\"nomDemandeurFr\":\"TAIBI\",\"prenomDemandeurFr\":\"OUSSAMA\",\"nomDemandeurAr\":\"طيبي\",\"prenomDemandeurAr\":\"اسامة\",\"structureId\":\"f83af7fe-4b35-4bb5-92fa-25f11e7936f8\",\"structureAr\":\"الوكالة المحلية بشار\",\"structureFr\":\"Alem BECHAR\"}"
+          },
+          "redirectURL": "",
+          "headersSize": 311,
+          "bodySize": 368,
+          "_transferSize": 679,
+          "_error": null
+        },
+        "serverIPAddress": "41.111.150.122",
+        "startedDateTime": "2025-05-21T10:42:08.133Z",
+        "time": 72.71199999922828,
+        "timings": {
+          "blocked": 9.149000000240164,
+          "dns": -1,
+          "ssl": -1,
+          "connect": -1,
+          "send": 0.21899999999999942,
+          "wait": 62.96800000084692,
+          "receive": 0.37599999814119656,
+          "_blocked_queueing": 1.6610000002401648
+        }
+      },
+      {
+        "_initiator": {
+          "type": "script",
+          "stack": {
+            "callFrames": [
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 396183
+              },
+              {
+                "functionName": "e.exports",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 394336
+              },
+              {
+                "functionName": "e.exports",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 691837
+              },
+              {
+                "functionName": "l.request",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 690479
+              },
+              {
+                "functionName": "r.forEach.l.<computed>",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 690786
+              },
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 393157
+              },
+              {
+                "functionName": "",
+                "scriptId": "5",
+                "url": "https://minha.anem.dz/static/js/main.b6371897.chunk.js",
+                "lineNumber": 0,
+                "columnNumber": 150152
+              },
+              {
+                "functionName": "d",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 6011
+              },
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 7358
+              },
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 6374
+              },
+              {
+                "functionName": "r",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 18931
+              },
+              {
+                "functionName": "c",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 19134
+              },
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 19193
+              },
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 19074
+              },
+              {
+                "functionName": "",
+                "scriptId": "5",
+                "url": "https://minha.anem.dz/static/js/main.b6371897.chunk.js",
+                "lineNumber": 0,
+                "columnNumber": 150333
+              },
+              {
+                "functionName": "",
+                "scriptId": "5",
+                "url": "https://minha.anem.dz/static/js/main.b6371897.chunk.js",
+                "lineNumber": 0,
+                "columnNumber": 151207
+              },
+              {
+                "functionName": "d",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 6011
+              },
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 7358
+              },
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 6374
+              },
+              {
+                "functionName": "r",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 18931
+              },
+              {
+                "functionName": "c",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 19134
+              },
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 19193
+              },
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 19074
+              },
+              {
+                "functionName": "",
+                "scriptId": "5",
+                "url": "https://minha.anem.dz/static/js/main.b6371897.chunk.js",
+                "lineNumber": 0,
+                "columnNumber": 151780
+              },
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 311347
+              },
+              {
+                "functionName": "dispatch",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 158038
+              },
+              {
+                "functionName": "",
+                "scriptId": "5",
+                "url": "https://minha.anem.dz/static/js/main.b6371897.chunk.js",
+                "lineNumber": 0,
+                "columnNumber": 160478
+              },
+              {
+                "functionName": "d",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 6011
+              },
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 7358
+              },
+              {
+                "functionName": "",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 6374
+              },
+              {
+                "functionName": "r",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 18931
+              },
+              {
+                "functionName": "c",
+                "scriptId": "8",
+                "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                "lineNumber": 1,
+                "columnNumber": 19134
+              }
+            ],
+            "parent": {
+              "description": "Promise.then",
+              "callFrames": [
+                {
+                  "functionName": "r",
+                  "scriptId": "8",
+                  "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                  "lineNumber": 1,
+                  "columnNumber": 19002
+                },
+                {
+                  "functionName": "c",
+                  "scriptId": "8",
+                  "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                  "lineNumber": 1,
+                  "columnNumber": 19134
+                }
+              ],
+              "parent": {
+                "description": "Promise.then",
+                "callFrames": [
+                  {
+                    "functionName": "r",
+                    "scriptId": "8",
+                    "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                    "lineNumber": 1,
+                    "columnNumber": 19002
+                  },
+                  {
+                    "functionName": "c",
+                    "scriptId": "8",
+                    "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                    "lineNumber": 1,
+                    "columnNumber": 19134
+                  },
+                  {
+                    "functionName": "",
+                    "scriptId": "8",
+                    "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                    "lineNumber": 1,
+                    "columnNumber": 19193
+                  },
+                  {
+                    "functionName": "",
+                    "scriptId": "8",
+                    "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                    "lineNumber": 1,
+                    "columnNumber": 19074
+                  },
+                  {
+                    "functionName": "",
+                    "scriptId": "5",
+                    "url": "https://minha.anem.dz/static/js/main.b6371897.chunk.js",
+                    "lineNumber": 0,
+                    "columnNumber": 161004
+                  },
+                  {
+                    "functionName": "",
+                    "scriptId": "8",
+                    "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                    "lineNumber": 1,
+                    "columnNumber": 311347
+                  },
+                  {
+                    "functionName": "",
+                    "scriptId": "5",
+                    "url": "https://minha.anem.dz/static/js/main.b6371897.chunk.js",
+                    "lineNumber": 0,
+                    "columnNumber": 159962
+                  },
+                  {
+                    "functionName": "Iu",
+                    "scriptId": "8",
+                    "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                    "lineNumber": 1,
+                    "columnNumber": 628373
+                  },
+                  {
+                    "functionName": "t.unstable_runWithPriority",
+                    "scriptId": "8",
+                    "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                    "lineNumber": 1,
+                    "columnNumber": 646147
+                  },
+                  {
+                    "functionName": "$a",
+                    "scriptId": "8",
+                    "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                    "lineNumber": 1,
+                    "columnNumber": 568643
+                  },
+                  {
+                    "functionName": "Nu",
+                    "scriptId": "8",
+                    "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                    "lineNumber": 1,
+                    "columnNumber": 627834
+                  },
+                  {
+                    "functionName": "",
+                    "scriptId": "8",
+                    "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                    "lineNumber": 1,
+                    "columnNumber": 627745
+                  },
+                  {
+                    "functionName": "F",
+                    "scriptId": "8",
+                    "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                    "lineNumber": 1,
+                    "columnNumber": 645206
+                  },
+                  {
+                    "functionName": "j.port1.onmessage",
+                    "scriptId": "8",
+                    "url": "https://minha.anem.dz/static/js/2.550d5398.chunk.js",
+                    "lineNumber": 1,
+                    "columnNumber": 643928
+                  }
+                ],
+                "parentId": {
+                  "id": "10",
+                  "debuggerId": "6780605984961258347.8709615390688105520"
+                }
+              }
+            }
+          }
+        },
+        "_priority": "High",
+        "_resourceType": "xhr",
+        "cache": {},
+        "connection": "60713",
+        "request": {
+          "method": "GET",
+          "url": "https://ac-controle.anem.dz/AllocationChomage/api/RendezVous/GetAvailableDates?StructureId=f83af7fe-4b35-4bb5-92fa-25f11e7936f8&PreInscriptionId=905a72dc-5f3d-4cee-93b9-f0644416b37c",
+          "httpVersion": "HTTP/1.1",
+          "headers": [
+            {
+              "name": "Accept",
+              "value": "application/json, text/plain, */*"
+            },
+            {
+              "name": "Accept-Encoding",
+              "value": "gzip, deflate, br, zstd"
+            },
+            {
+              "name": "Accept-Language",
+              "value": "fr-FR,fr;q=0.9,ar-DZ;q=0.8,ar;q=0.7,en-US;q=0.6,en;q=0.5"
+            },
+            {
+              "name": "Cache-Control",
+              "value": "no-cache"
+            },
+            {
+              "name": "Connection",
+              "value": "keep-alive"
+            },
+            {
+              "name": "Host",
+              "value": "ac-controle.anem.dz"
+            },
+            {
+              "name": "Origin",
+              "value": "https://minha.anem.dz"
+            },
+            {
+              "name": "Pragma",
+              "value": "no-cache"
+            },
+            {
+              "name": "Referer",
+              "value": "https://minha.anem.dz/"
+            },
+            {
+              "name": "Sec-Fetch-Dest",
+              "value": "empty"
+            },
+            {
+              "name": "Sec-Fetch-Mode",
+              "value": "cors"
+            },
+            {
+              "name": "Sec-Fetch-Site",
+              "value": "same-site"
+            },
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
+            },
+            {
+              "name": "sec-ch-ua",
+              "value": "\"Not)A;Brand\";v=\"99\", \"Google Chrome\";v=\"127\", \"Chromium\";v=\"127\""
+            },
+            {
+              "name": "sec-ch-ua-mobile",
+              "value": "?0"
+            },
+            {
+              "name": "sec-ch-ua-platform",
+              "value": "\"Windows\""
+            }
+          ],
+          "queryString": [
+            {
+              "name": "StructureId",
+              "value": "f83af7fe-4b35-4bb5-92fa-25f11e7936f8"
+            },
+            {
+              "name": "PreInscriptionId",
+              "value": "905a72dc-5f3d-4cee-93b9-f0644416b37c"
+            }
+          ],
+          "cookies": [],
+          "headersSize": 815,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 200,
+          "statusText": "OK",
+          "httpVersion": "HTTP/1.1",
+          "headers": [
+            {
+              "name": "Access-Control-Allow-Credentials",
+              "value": "true"
+            },
+            {
+              "name": "Access-Control-Allow-Headers",
+              "value": "*"
+            },
+            {
+              "name": "Access-Control-Allow-Methods",
+              "value": "GET, POST, PUT, DELETE"
+            },
+            {
+              "name": "Access-Control-Allow-Origin",
+              "value": "*"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json; charset=utf-8"
+            },
+            {
+              "name": "Date",
+              "value": "Wed, 21 May 2025 10:43:36 GMT"
+            },
+            {
+              "name": "Server",
+              "value": "Microsoft-IIS/10.0"
+            },
+            {
+              "name": "content-length",
+              "value": "12"
+            }
+          ],
+          "cookies": [],
+          "content": {
+            "size": 12,
+            "mimeType": "application/json",
+            "compression": 0,
+            "text": "{\"dates\":[]}"
+          },
+          "redirectURL": "",
+          "headersSize": 310,
+          "bodySize": 12,
+          "_transferSize": 322,
+          "_error": null
+        },
+        "serverIPAddress": "41.111.150.122",
+        "startedDateTime": "2025-05-21T10:42:08.226Z",
+        "time": 98.73999999945227,
+        "timings": {
+          "blocked": 3.320999999637017,
+          "dns": -1,
+          "ssl": -1,
+          "connect": -1,
+          "send": 0.34399999999999986,
+          "wait": 94.66499999925878,
+          "receive": 0.41000000055646524,
+          "_blocked_queueing": 0.503999999637017
+        }
+      }
+    ]
+  }
+}
