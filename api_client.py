@@ -1,15 +1,73 @@
 # api_client.py
-import requests
 import json
-import time
 import logging
+import time
 import urllib3
+import random
 
-from config import BASE_API_URL, MAIN_SITE_CHECK_URL, MAX_RETRIES, MAX_BACKOFF_DELAY, SESSION
+import requests
+
+from config import (
+    BASE_API_URL,
+    MAIN_SITE_CHECK_URL,
+    MAX_RETRIES,
+    MAX_BACKOFF_DELAY,
+    SESSION,
+    ENDPOINT_MIN_REQUEST_INTERVALS,
+    ENDPOINT_429_COOLDOWN,
+    PACING_JITTER_RANGE,
+)
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 logger = logging.getLogger(__name__)
+
+
+class _EndpointRateLimiter:
+    """منظم بسيط للفواصل الزمنية بين الطلبات الحساسة للحظر/الـ429."""
+
+    def __init__(self):
+        self._last_call_ts = {}
+        self._cooldown_until = {}
+
+    def block_if_needed(self, endpoint: str):
+        """
+        يفرض الانتظار قبل إرسال طلب جديد لمسار محدد.
+        يعيد عدد الثواني التي تم الانتظار لها (قد تكون 0).
+        """
+        if not endpoint:
+            return 0.0
+
+        min_interval = ENDPOINT_MIN_REQUEST_INTERVALS.get(endpoint)
+        if min_interval is None:
+            return 0.0
+
+        now = time.monotonic()
+        jitter = random.uniform(*PACING_JITTER_RANGE)
+        wait_min_interval = 0.0
+
+        last_ts = self._last_call_ts.get(endpoint)
+        if last_ts:
+            elapsed = now - last_ts
+            wait_min_interval = max(0.0, (min_interval + jitter) - elapsed)
+
+        cooldown_until = self._cooldown_until.get(endpoint)
+        wait_cooldown = max(0.0, cooldown_until - now) if cooldown_until else 0.0
+
+        wait_for = max(wait_min_interval, wait_cooldown)
+        if wait_for > 0:
+            time.sleep(wait_for)
+
+        self._last_call_ts[endpoint] = time.monotonic()
+        return wait_for
+
+    def register_penalty(self, endpoint: str, penalty_seconds: float):
+        if not endpoint:
+            return
+        now = time.monotonic()
+        self._cooldown_until[endpoint] = max(
+            self._cooldown_until.get(endpoint, 0.0), now + penalty_seconds
+        )
 
 
 class AnemAPIClient:
@@ -19,6 +77,7 @@ class AnemAPIClient:
         self.initial_backoff_general = initial_backoff_general
         self.initial_backoff_429 = initial_backoff_429
         self.request_timeout = request_timeout
+        self._rate_limiter = _EndpointRateLimiter()
 
 
     def _make_request(self, method, endpoint, params=None, data=None, extra_headers=None, is_site_check=False):
@@ -47,6 +106,15 @@ class AnemAPIClient:
                 response = None
                 request_timeout_val = 5 if is_site_check else self.request_timeout
 
+                # ضبط الإيقاع لمنع الحظر، مع تسجيل مدة الانتظار
+                waited = 0.0
+                if not is_site_check:
+                    waited = self._rate_limiter.block_if_needed(endpoint)
+                    if waited > 0:
+                        logger.info(
+                            f"تم الانتظار {waited:.2f}s قبل {endpoint} لاحترام حدود الخادم."
+                        )
+
                 if method.upper() == 'GET':
                     response = self.session.get(url, params=params, headers=headers, timeout=request_timeout_val, verify=False)
                 elif method.upper() == 'POST':
@@ -62,6 +130,7 @@ class AnemAPIClient:
                 if response.status_code == 429:
                     actual_delay_to_use = current_delay_429
                     logger.warning(f"خطأ 429 (طلبات كثيرة جدًا) من الخادم لـ {url}. الانتظار {actual_delay_to_use} ثانية.")
+                    self._rate_limiter.register_penalty(endpoint, ENDPOINT_429_COOLDOWN)
                     if current_retry >= max_retries_for_this_call:
                         final_429_error = "طلبات كثيرة جدًا للخادم (429). يرجى الانتظار والمحاولة لاحقًا."
                         logger.error(f"تم تجاوز الحد الأقصى لإعادة المحاولة (429) لـ {url}. الرسالة المُعادة: {final_429_error}")

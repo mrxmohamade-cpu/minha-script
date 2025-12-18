@@ -91,6 +91,19 @@ SETTING_BACKOFF_429 = "backoff_429"
 SETTING_BACKOFF_GENERAL = "backoff_general"
 SETTING_REQUEST_TIMEOUT = "request_timeout"
 
+# --- Request pacing configuration (per endpoint) ---
+# هذه القيم تضيف حداً أدنى للفاصل الزمني بين الطلبات الحساسة لتجنب الحظر
+ENDPOINT_MIN_REQUEST_INTERVALS = {
+    "RendezVous/GetAvailableDates": 3.0,  # ثانية
+    "RendezVous/Create": 6.0,
+}
+
+# مدة التهدئة الإضافية بعد استلام 429 لنفس المسار (ثواني)
+ENDPOINT_429_COOLDOWN = 90.0
+
+# مدى العشوائية المضافة للفواصل الزمنية لتقليد المتصفح وتخفيف الحظر
+PACING_JITTER_RANGE = (0.25, 0.9)
+
 # --- Default Settings (if settings file is missing or corrupted) ---
 DEFAULT_SETTINGS = {
     SETTING_MIN_MEMBER_DELAY: 5,
