@@ -1,6 +1,7 @@
 # firebase_service.py (User App - Updated to align with Admin Panel Logic - AppData Paths - Added Messaging)
 import firebase_admin
 from firebase_admin import credentials, firestore
+from google.api_core import exceptions as google_exceptions
 import os
 import json
 import logging
@@ -610,22 +611,49 @@ class FirebaseService:
             logger.info("FirebaseService (User): App messages listener already active. Stopping existing one.")
             self.stop_listening_to_app_messages()
 
-        try:
-            # Query to get messages, ordered by creation date (newest first), and optionally limited
-            # For now, we assume messages are for all users. Targeting can be added later via 'targetAudience' fields etc.
-            query = self.db.collection(FIRESTORE_MESSAGES_COLLECTION)\
-                            .where("active", "==", True)\
-                            .order_by("createdAt", direction=firestore.Query.DESCENDING)
+        def _build_messages_query(use_ordering=True):
+            query = self.db.collection(FIRESTORE_MESSAGES_COLLECTION).where("active", "==", True)
+            if use_ordering:
+                query = query.order_by("createdAt", direction=firestore.Query.DESCENDING)
             if limit_count > 0:
                 query = query.limit(limit_count)
-            
+            return query
+
+        internal_cb = lambda col_sn, chgs, rt: self._on_app_messages_snapshot(col_sn, chgs, rt, callback_on_update, self._message_listener_stop_event)
+
+        try:
+            # Try the fully-specified query first (matching the intended logic and ordering)
             self._message_listener_stop_event.clear() # Clear any previous stop event state
-            
-            internal_cb = lambda col_sn, chgs, rt: self._on_app_messages_snapshot(col_sn, chgs, rt, callback_on_update, self._message_listener_stop_event)
-            
-            self._message_listener = query.on_snapshot(internal_cb)
+            self._message_listener = _build_messages_query(use_ordering=True).on_snapshot(internal_cb)
             logger.info(f"FirebaseService (User): Successfully started listening for app messages (limit: {limit_count}).")
             return True
+        except google_exceptions.FailedPrecondition as e:
+            # Firestore raises FailedPrecondition when the query requires a missing composite index
+            error_text = str(e)
+            if "requires an index" in error_text:
+                logger.error(
+                    "FirebaseService (User): App messages query requires a composite index. "
+                    "Listener will fall back to unsorted results. Details: %s", error_text
+                )
+                if callback_on_update:
+                    callback_on_update(None, "خدمة Firebase تتطلب فهرسًا مركبًا لرسائل التطبيق. سيتم استخدام ترتيب افتراضي دون فرز.")
+                try:
+                    self._message_listener_stop_event.clear()
+                    self._message_listener = _build_messages_query(use_ordering=False).on_snapshot(internal_cb)
+                    logger.info("FirebaseService (User): Fallback app messages listener started without ordering.")
+                    return True
+                except Exception as fallback_error:
+                    logger.exception(
+                        "FirebaseService (User): Fallback listener without ordering failed: %s", fallback_error
+                    )
+                    if callback_on_update:
+                        callback_on_update(None, f"تعذر بدء الاستماع لرسائل التطبيق (فشل التبديل الاحتياطي): {fallback_error}")
+                    return False
+            # Re-raise for any other precondition failures
+            logger.exception("FirebaseService (User): FailedPrecondition starting app messages listener: %s", e)
+            if callback_on_update:
+                callback_on_update(None, f"تعذر بدء الاستماع لرسائل التطبيق: {e}")
+            return False
         except Exception as e:
             logger.exception(f"FirebaseService (User): Error starting listener for app messages: {e}")
             if callback_on_update: callback_on_update(None, f"Error starting app messages listener: {e}")
