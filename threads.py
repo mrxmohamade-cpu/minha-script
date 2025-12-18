@@ -121,13 +121,14 @@ class FetchInitialInfoThread(QThread):
                     logger.info(f"العضو {self.member.nin} ( {self.member.get_full_name_ar()} ) مستفيد حاليًا من المنحة، تاريخ البدء: {date_debut}.")
                 else:
                     is_eligible_from_validate = data_val.get("eligible", False)
-                    self.member.has_actual_pre_inscription = data_val.get("havePreInscription", False)
+                    raw_pre_inscription_id = data_val.get("preInscriptionId")
+                    self.member.pre_inscription_id = raw_pre_inscription_id
+                    self.member.has_actual_pre_inscription = bool(data_val.get("havePreInscription", False) and raw_pre_inscription_id)
                     self.member.already_has_rdv = data_val.get("haveRendezVous", False)
                     valid_input = data_val.get("validInput", True)
-                    self.member.pre_inscription_id = data_val.get("preInscriptionId")
                     self.member.demandeur_id = data_val.get("demandeurId")
                     self.member.structure_id = data_val.get("structureId")
-                    self.member.rdv_id = data_val.get("rendezVousId") 
+                    self.member.rdv_id = data_val.get("rendezVousId")
                     
                     # Set rdv_source if RDV is discovered here
                     if self.member.already_has_rdv:
@@ -659,10 +660,11 @@ class MonitoringThread(QThread):
                 self._emit_global_log(f"مستفيد حاليًا.", is_general=False, member_obj=member_obj, member_idx=main_list_idx)
                 validation_can_progress = False 
             else: 
-                member_obj.has_actual_pre_inscription = data.get("havePreInscription", False)
+                raw_pre_inscription_id = data.get("preInscriptionId")
+                member_obj.pre_inscription_id = raw_pre_inscription_id
+                member_obj.has_actual_pre_inscription = bool(data.get("havePreInscription", False) and raw_pre_inscription_id)
                 member_obj.already_has_rdv = data.get("haveRendezVous", False)
                 valid_input = data.get("validInput", True)
-                member_obj.pre_inscription_id = data.get("preInscriptionId")
                 member_obj.demandeur_id = data.get("demandeurId")
                 member_obj.structure_id = data.get("structureId")
                 member_obj.rdv_id = data.get("rendezVousId") 
