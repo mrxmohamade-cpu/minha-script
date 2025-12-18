@@ -114,7 +114,7 @@ class AnemApp(QMainWindow):
         self.firebase_service = FirebaseService() 
         self.activated_code_id = None
         self.current_subscription_data = None
-        self.current_device_id = self.firebase_service.current_device_id_for_messaging 
+        self.current_device_id = self.firebase_service.current_device_id_for_messaging
         self.activation_dialog_open = False
         self.toast_notifications = []
         self.settings = {}
@@ -163,6 +163,13 @@ class AnemApp(QMainWindow):
         self.active_spinner_row_in_view = -1
         self.spinner_char_idx = 0
         self.spinner_chars = ['◐', '◓', '◑', '◒']
+
+        # عناصر شريط الحالة المحسّنة
+        self.status_spinner_idx = 0
+        self.status_spinner_chars = ['⏳', '⌛', '⏰', '🕒']
+        self.status_spinner_timer = QTimer(self)
+        self.status_spinner_timer.setInterval(350)
+        self.status_spinner_timer.timeout.connect(self._advance_status_spinner)
         self.row_spinner_timer = QTimer(self)
         self.row_spinner_timer.timeout.connect(self.update_active_row_spinner_display)
         self.row_spinner_timer_interval = 150
@@ -777,25 +784,67 @@ class AnemApp(QMainWindow):
 
 
         self.statusBar = QStatusBar()
+        self.statusBar.setObjectName("MainStatusBar")
         self.setStatusBar(self.statusBar)
-        self.status_bar_label = QLabel("جاهز.")
+
+        self.status_bar_label = QLabel("التطبيق جاهز.")
+        self.status_bar_label.setObjectName("StatusDetail")
+        self.status_bar_label.setMinimumWidth(260)
+
+        self.status_chip_label = QLabel("ℹ️ حالة عامة")
+        self.status_chip_label.setObjectName("StatusChip")
+        self.status_chip_label.setAlignment(Qt.AlignCenter)
+        self.status_chip_label.setMinimumWidth(140)
+
+        self.status_spinner_label = QLabel("")
+        self.status_spinner_label.setObjectName("StatusSpinner")
+        self.status_spinner_label.setVisible(False)
+
         self.last_scan_label = QLabel("آخر حدث: --:--:--")
         self.last_scan_label.setToolTip("توقيت آخر رسالة أو عملية")
+        self.last_scan_label.setObjectName("LastEventLabel")
+
         self.countdown_label = QLabel("⏸️ لا يوجد عد تنازلي")
         self.countdown_label.setToolTip("الوقت المتبقي قبل الخطوة التالية")
-        
+        self.countdown_label.setObjectName("CountdownLabel")
+
+        self.refresh_hint_label = QLabel("لا يوجد تحديث نشط")
+        self.refresh_hint_label.setObjectName("RefreshHintLabel")
+        self.refresh_hint_label.setToolTip("أحدث حالة للتحديث/التحميل")
+
         # إنشاء زر الرسائل في شريط الحالة
         self.messages_button_status_bar = QToolButton(self)
-        self.messages_button_status_bar.setAutoRaise(True) 
+        self.messages_button_status_bar.setAutoRaise(True)
         self.messages_button_status_bar.setToolButtonStyle(Qt.ToolButtonTextBesideIcon) # لعرض النص بجانب الأيقونة
         self.messages_button_status_bar.clicked.connect(self._show_messages_dialog)
         self.messages_button_status_bar.setObjectName("StatusBarMessagesButton")
-        self.messages_button_status_bar.setFocusPolicy(Qt.NoFocus) 
-        
-        self.statusBar.addPermanentWidget(self.messages_button_status_bar) 
-        self.statusBar.addPermanentWidget(self.countdown_label)
-        self.statusBar.addPermanentWidget(self.last_scan_label)
-        self.statusBar.addWidget(self.status_bar_label, 1) 
+        self.messages_button_status_bar.setFocusPolicy(Qt.NoFocus)
+
+        status_layout = QHBoxLayout()
+        status_layout.setContentsMargins(8, 2, 8, 2)
+        status_layout.setSpacing(10)
+        status_container = QWidget()
+        status_container.setLayout(status_layout)
+
+        status_layout.addWidget(self.messages_button_status_bar)
+        status_layout.addWidget(self.status_chip_label)
+        status_layout.addWidget(self.status_spinner_label)
+        status_layout.addWidget(self.status_bar_label, 1)
+        status_layout.addWidget(self.refresh_hint_label)
+        status_layout.addWidget(self.countdown_label)
+        status_layout.addWidget(self.last_scan_label)
+
+        self.statusBar.addPermanentWidget(status_container, 1)
+        self.statusBar.setStyleSheet(
+            """
+            QStatusBar#MainStatusBar { background: #151a20; color: #dfe6e9; }
+            QLabel#StatusChip { background: #2d3436; color: #ecf0f1; border-radius: 8px; padding: 4px 10px; font-weight: 600; }
+            QLabel#StatusDetail { color: #e0e6ed; }
+            QLabel#RefreshHintLabel, QLabel#CountdownLabel, QLabel#LastEventLabel { color: #cfd8e3; }
+            QToolButton#StatusBarMessagesButton { color: #d8dee9; border: none; padding: 2px 6px; }
+            QToolButton#StatusBarMessagesButton:hover { background-color: #4C566A; }
+            """
+        )
         self._update_messages_button_status_bar() # تحديث الواجهة الأولية للزر
 
 
@@ -1030,7 +1079,12 @@ class AnemApp(QMainWindow):
                 return
 
             logger.info(f"طلب فحص فوري للعضو: {member_display_name}")
-            self.update_status_bar_message(f"بدء الفحص الفوري للعضو: {member_display_name}...", is_general_message=False)
+            self.update_status_bar_message(
+                f"بدء الفحص الفوري للعضو: {member_display_name}...",
+                is_general_message=False,
+                busy=True,
+                hint_text="جاري تنفيذ فحص فوري وتحديث الحالة"
+            )
             self._show_toast(f"بدء الفحص الفوري للعضو: {member_display_name}", type="info", title="فحص فوري")
 
             self.single_check_thread = SingleMemberCheckThread(member, original_member_index, self.api_client, self.settings.copy())
@@ -1069,7 +1123,12 @@ class AnemApp(QMainWindow):
             return
 
         logger.info(f"طلب تحميل جميع الشهادات للعضو: {member_display_name}")
-        self.update_status_bar_message(f"بدء تحميل جميع الشهادات لـ {member_display_name}...", is_general_message=False)
+        self.update_status_bar_message(
+            f"بدء تحميل جميع الشهادات لـ {member_display_name}...",
+            is_general_message=False,
+            busy=True,
+            hint_text="جاري تحميل الشهادات وتجهيز الملفات"
+        )
         self._show_toast(f"بدء تحميل جميع الشهادات لـ {member_display_name}", type="info", title="تحميل الشهادات")
 
         all_pdfs_thread = DownloadAllPdfsThread(member, original_member_index, self.api_client)
@@ -1089,7 +1148,13 @@ class AnemApp(QMainWindow):
         if 0 <= original_member_index < len(self.members_list):
             member = self.members_list[original_member_index]
             member_display_name = self._get_member_display_name_with_index(member, original_member_index)
-            self.update_status_bar_message(f"انتهت معالجة تحميل الشهادات للعضو: {member_display_name}", is_general_message=True)
+            self.update_status_bar_message(
+                f"انتهت معالجة تحميل الشهادات للعضو: {member_display_name}",
+                is_general_message=True,
+                level="success",
+                busy=False,
+                hint_text="اكتمل تحميل الشهادات"
+            )
 
 
     def handle_individual_pdf_status(self, original_member_index, pdf_type, file_path_or_status_msg_from_thread, success, error_msg_for_toast_from_thread):
@@ -1111,13 +1176,25 @@ class AnemApp(QMainWindow):
             member.set_activity_detail(file_path_or_status_msg_from_thread if os.path.exists(file_path_or_status_msg_from_thread) else activity_detail)
             toast_msg = f"{activity_detail}\nالمسار: {file_path}"
             self._show_toast(toast_msg, type="success", duration=5000, title=f"تحميل شهادة {pdf_type_ar}")
-            self.update_status_bar_message(f"تم تحميل شهادة {pdf_type_ar} للعضو {member_name_display}.", is_general_message=True)
+            self.update_status_bar_message(
+                f"تم تحميل شهادة {pdf_type_ar} للعضو {member_name_display}.",
+                is_general_message=True,
+                level="success",
+                busy=False,
+                hint_text="آخر عملية تحميل مكتملة"
+            )
         else:
             activity_detail = file_path_or_status_msg_from_thread 
             member.set_activity_detail(activity_detail, is_error=True)
             toast_msg = f"فشل تحميل شهادة {pdf_type_ar}. السبب: {error_msg_for_toast_from_thread or activity_detail}"
             self._show_toast(toast_msg, type="error", duration=6000, title=f"فشل تحميل شهادة {pdf_type_ar}")
-            self.update_status_bar_message(f"فشل تحميل شهادة {pdf_type_ar} للعضو {member_name_display}.", is_general_message=True)
+            self.update_status_bar_message(
+                f"فشل تحميل شهادة {pdf_type_ar} للعضو {member_name_display}.",
+                is_general_message=True,
+                level="error",
+                busy=False,
+                hint_text="يرجى إعادة المحاولة بعد التحقق من الاتصال"
+            )
 
         self.update_member_gui_in_table(original_member_index, member.status, member.last_activity_detail, get_icon_name_for_status(member.status))
         self.save_members_data()
@@ -1959,12 +2036,63 @@ class AnemApp(QMainWindow):
                         full_name_item.setText(member.get_full_name_ar()) 
                     if not self.suppress_initial_messages: 
                         self._show_toast(f"تم تحديث اسم العضو.", type="info", title=self._get_member_display_name_with_index(member, original_member_index))
-            except ValueError: 
-                pass 
-            self.save_members_data() 
+            except ValueError:
+                pass
+            self.save_members_data()
 
 
-    def update_status_bar_message(self, message, is_general_message=True, member_obj=None, original_idx_if_member=None):
+    def _update_status_chip(self, level="info", label_text="حالة عامة"):
+        if not hasattr(self, 'status_chip_label'):
+            return
+
+        icon_map = {
+            "info": "ℹ️",
+            "success": "✅",
+            "warning": "⚠️",
+            "error": "⛔",
+        }
+        color_map = {
+            "info": "#2d3436",
+            "success": "#1e7e34",
+            "warning": "#d35400",
+            "error": "#c0392b",
+        }
+        icon = icon_map.get(level, "ℹ️")
+        bg_color = color_map.get(level, "#2d3436")
+        self.status_chip_label.setText(f"{icon} {label_text}")
+        self.status_chip_label.setStyleSheet(
+            f"QLabel#StatusChip {{ background: {bg_color}; color: #ecf0f1; border-radius: 8px; padding: 4px 10px; font-weight: 600; }}"
+        )
+
+
+    def _set_status_spinner_running(self, running):
+        if not hasattr(self, 'status_spinner_label'):
+            return
+        if running:
+            if not self.status_spinner_timer.isActive():
+                self.status_spinner_timer.start()
+            self.status_spinner_label.setVisible(True)
+        else:
+            self.status_spinner_timer.stop()
+            self.status_spinner_label.setVisible(False)
+            self.status_spinner_label.setText("")
+
+
+    def _advance_status_spinner(self):
+        self.status_spinner_idx = (self.status_spinner_idx + 1) % len(self.status_spinner_chars)
+        self.status_spinner_label.setText(self.status_spinner_chars[self.status_spinner_idx])
+
+
+    def _update_refresh_hint(self, text=None, busy=False):
+        if hasattr(self, 'refresh_hint_label'):
+            if text is not None:
+                self.refresh_hint_label.setText(text)
+            elif not self.refresh_hint_label.text().strip():
+                self.refresh_hint_label.setText("لا يوجد تحديث نشط")
+        self._set_status_spinner_running(busy)
+
+
+    def update_status_bar_message(self, message, is_general_message=True, member_obj=None, original_idx_if_member=None, level="info", busy=False, hint_text=None):
         final_message = message
         if member_obj and original_idx_if_member is not None and original_idx_if_member >= 0:
             member_display = self._get_member_display_name_with_index(member_obj, original_idx_if_member)
@@ -1976,6 +2104,10 @@ class AnemApp(QMainWindow):
         if hasattr(self, 'last_scan_label'):
             self.last_scan_label.setText(f"آخر حدث: {time.strftime('%H:%M:%S')}")
 
+        chip_label = "حالة عامة" if is_general_message else "تشغيل/تحميل"
+        self._update_status_chip(level=level, label_text=chip_label)
+        self._update_refresh_hint(hint_text, busy)
+
         if hasattr(self, 'countdown_label') and self.countdown_label.text().strip() == "":
             self.countdown_label.setText("⏸️ لا يوجد عد تنازلي")
 
@@ -1986,9 +2118,11 @@ class AnemApp(QMainWindow):
             if display_text:
                 self.countdown_label.setText(f"⏳ {display_text}")
                 self.countdown_label.setToolTip("الوقت المتبقي قبل تنفيذ الخطوة التالية")
+                self._update_refresh_hint(f"العد التنازلي: {display_text}", busy=True)
             else:
                 self.countdown_label.setText("⏸️ لا يوجد عد تنازلي")
                 self.countdown_label.setToolTip("لا يوجد انتظار حالي")
+                self._update_refresh_hint("لا يوجد تحديث نشط", busy=False)
 
 
     def start_monitoring(self):
@@ -2013,11 +2147,16 @@ class AnemApp(QMainWindow):
             self.add_member_button.setEnabled(False) 
             self.remove_member_button.setEnabled(False) 
             monitoring_interval_minutes = self.settings.get(SETTING_MONITORING_INTERVAL, DEFAULT_SETTINGS[SETTING_MONITORING_INTERVAL])
-            self.update_status_bar_message(f"بدأت المراقبة (الدورة كل {monitoring_interval_minutes} دقيقة)...", is_general_message=False)
+            self.update_status_bar_message(
+                f"بدأت المراقبة (الدورة كل {monitoring_interval_minutes} دقيقة)...",
+                is_general_message=False,
+                busy=True,
+                hint_text=f"المراقبة نشطة - الدورة كل {monitoring_interval_minutes} دقيقة"
+            )
             self._show_toast(f"بدأت المراقبة (الدورة كل {monitoring_interval_minutes} دقيقة).", type="info", title="المراقبة")
         else:
             self._show_toast("المراقبة جارية بالفعل.", type="info", title="المراقبة")
-            self.update_status_bar_message("المراقبة جارية بالفعل.", is_general_message=True)
+            self.update_status_bar_message("المراقبة جارية بالفعل.", is_general_message=True, hint_text="المراقبة تعمل")
 
 
     def stop_monitoring(self):
@@ -2046,7 +2185,7 @@ class AnemApp(QMainWindow):
                 self._disable_app_functions() 
                 self.stop_button.setEnabled(False) 
 
-            self.update_status_bar_message("تم إيقاف المراقبة بنجاح.", is_general_message=True)
+            self.update_status_bar_message("تم إيقاف المراقبة بنجاح.", is_general_message=True, level="warning", busy=False, hint_text="المراقبة متوقفة")
             self._show_toast("تم إيقاف المراقبة.", type="info", title="المراقبة")
             self.update_countdown_timer_display("") 
             for i in range(len(self.members_list)):
@@ -2055,7 +2194,7 @@ class AnemApp(QMainWindow):
                     self.update_member_gui_in_table(i, self.members_list[i].status, self.members_list[i].last_activity_detail, get_icon_name_for_status(self.members_list[i].status))
         else:
             self._show_toast("المراقبة ليست جارية حاليًا.", type="info", title="المراقبة")
-            self.update_status_bar_message("المراقبة ليست جارية.", is_general_message=True)
+            self.update_status_bar_message("المراقبة ليست جارية.", is_general_message=True, hint_text="لا يوجد عمل مجدول")
 
 
     def load_members_data(self):
