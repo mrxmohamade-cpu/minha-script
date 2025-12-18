@@ -2,6 +2,7 @@
 import firebase_admin
 from firebase_admin import credentials, firestore
 from google.api_core import exceptions as google_exceptions
+from google.auth import exceptions as google_auth_exceptions
 import os
 import json
 import logging
@@ -74,7 +75,7 @@ class FirebaseService:
                     self.db = firestore.client()
                     self.app_initialized = True
                     logger.info("FirebaseService (User): Using pre-initialized Firebase Admin SDK app.")
-                
+
                 if self.app_initialized:
                     # Get device ID once during initialization for messaging
                     device_info = self.get_device_info()
@@ -88,6 +89,48 @@ class FirebaseService:
             except Exception as e:
                 logger.exception(f"FirebaseService (User): An error occurred during Firebase Admin SDK initialization: {e}")
                 self._initialized_by_instance = False
+
+    def _get_with_retry(self, doc_ref, description: str, max_attempts: int = 3, base_sleep: float = 1.5):
+        """
+        Retrieve a Firestore document with small retry/backoff to absorb transient transport errors
+        (e.g., RemoteDisconnected during token refresh).
+        Raises the last exception so callers can surface a localized message.
+        """
+        attempt = 0
+        last_exc = None
+        while attempt < max_attempts:
+            attempt += 1
+            try:
+                return doc_ref.get()
+            except (
+                google_exceptions.ServiceUnavailable,
+                google_exceptions.DeadlineExceeded,
+                google_auth_exceptions.TransportError,
+                requests.exceptions.RequestException,
+            ) as e:
+                last_exc = e
+                wait_time = base_sleep * attempt
+                logger.warning(
+                    "FirebaseService (User): Transient error while %s (attempt %s/%s): %s. Retrying after %.1fs",
+                    description,
+                    attempt,
+                    max_attempts,
+                    e,
+                    wait_time,
+                )
+                time.sleep(wait_time)
+            except Exception:
+                raise
+
+        logger.error(
+            "FirebaseService (User): Failed to %s after %s attempts. Last error: %s",
+            description,
+            max_attempts,
+            last_exc,
+        )
+        if last_exc:
+            raise last_exc
+        raise RuntimeError(f"Unknown error while {description}")
 
     def is_initialized(self):
         return self.app_initialized and self.db is not None
@@ -260,7 +303,7 @@ class FirebaseService:
         try:
             logger.debug(f"FirebaseService (User): Fetching details for code '{code_id}'")
             code_ref = self.db.collection(FIRESTORE_ACTIVATION_CODES_COLLECTION).document(code_id.strip())
-            code_doc = code_ref.get()
+            code_doc = self._get_with_retry(code_ref, f"fetching code '{code_id}'")
 
             if code_doc.exists:
                 code_data = code_doc.to_dict()
@@ -301,7 +344,7 @@ class FirebaseService:
 
         try:
             code_ref = self.db.collection(FIRESTORE_ACTIVATION_CODES_COLLECTION).document(code_to_activate.strip())
-            code_doc = code_ref.get()
+            code_doc = self._get_with_retry(code_ref, f"activating code '{code_to_activate}'")
 
             if not code_doc.exists:
                 logger.warning(f"FirebaseService (User): Activation attempt for non-existent code '{code_to_activate}'.")
