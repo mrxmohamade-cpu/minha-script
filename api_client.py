@@ -78,6 +78,19 @@ class AnemAPIClient:
                 if is_site_check:
                     return True, None
 
+                content_type = response.headers.get("Content-Type", "").lower()
+
+                # إذا كانت الاستجابة PDF أو بيانات ثنائية، أرجع المحتوى كما هو ليتم حفظه لاحقًا
+                if "application/pdf" in content_type or "application/octet-stream" in content_type:
+                    logger.debug(f"استلام استجابة ثنائية من {url} بحجم {len(response.content)} بايت.")
+                    return {"binary": response.content, "content_type": content_type}, None
+
+                # بعض نقاط النهاية (تحميل pdf) قد تُرجع نص Base64 مباشر بدون JSON
+                raw_text = response.text.strip() if response.text else ""
+                if endpoint.startswith("download/") and raw_text and not raw_text.startswith("{"):
+                    logger.debug(f"استلام نص Base64 مباشر من {url} (طول {len(raw_text)}).")
+                    return raw_text, None
+
                 try:
                     json_response = response.json()
                     if endpoint == 'RendezVous/Create' and isinstance(json_response, dict) and json_response.get("Eligible") is False:

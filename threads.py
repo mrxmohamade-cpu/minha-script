@@ -935,13 +935,24 @@ class MonitoringThread(QThread):
         if api_err:
             error_msg_for_toast = _translate_api_error(api_err, operation_name)
             self._emit_global_log(f"فشل تحميل شهادة {filename_suffix_base}: {error_msg_for_toast}", is_general=False, member_obj=member_obj, member_idx=main_list_idx)
-        elif response_data and (isinstance(response_data, str) or (isinstance(response_data, dict) and "base64Pdf" in response_data)):
-            pdf_b64 = response_data if isinstance(response_data, str) else response_data.get("base64Pdf")
+        elif response_data and (isinstance(response_data, str) or (isinstance(response_data, dict) and ("base64Pdf" in response_data or "binary" in response_data))):
+            pdf_b64 = None
+            pdf_content = None
+            if isinstance(response_data, dict) and response_data.get("binary"):
+                pdf_content = response_data.get("binary")
+            else:
+                pdf_b64 = response_data if isinstance(response_data, str) else response_data.get("base64Pdf")
+                try:
+                    pdf_content = base64.b64decode(pdf_b64)
+                except Exception as e_decode:
+                    error_msg_for_toast = f"تعذر فك تشفير ملف {report_type}: {e_decode}"
+                    self._emit_global_log(f"تعذر فك تشفير PDF: {e_decode}", is_general=False, member_obj=member_obj, member_idx=main_list_idx)
             try:
-                pdf_content = base64.b64decode(pdf_b64)
+                if pdf_content is None:
+                    raise ValueError("لم يتم استلام محتوى PDF صالح")
                 safe_member_name_part = "".join(c for c in (member_obj.get_full_name_ar() or member_obj.nin) if c.isalnum() or c in (' ', '_', '-')).rstrip().replace(" ","_")
-                if not safe_member_name_part: safe_member_name_part = member_obj.nin 
-                final_filename = f"{filename_suffix_base}_{safe_member_name_part}.pdf" 
+                if not safe_member_name_part: safe_member_name_part = member_obj.nin
+                final_filename = f"{filename_suffix_base}_{safe_member_name_part}.pdf"
                 file_path = os.path.join(member_specific_dir, final_filename)
                 with open(file_path, 'wb') as f:
                     f.write(pdf_content)
