@@ -17,7 +17,25 @@ from config import (
 
 logger = logging.getLogger(__name__)
 
-SHORT_SKIP_DELAY_SECONDS = 0.1 
+SHORT_SKIP_DELAY_SECONDS = 0.1
+
+
+def _extract_pre_inscription_state(data_dict, log_context="validate"):
+    raw_pre_inscription_id = data_dict.get("preInscriptionId") if isinstance(data_dict, dict) else None
+    have_pre_flag = bool(isinstance(data_dict, dict) and data_dict.get("havePreInscription", False))
+
+    normalized_id = raw_pre_inscription_id.strip() if isinstance(raw_pre_inscription_id, str) else raw_pre_inscription_id
+    invalid_placeholders = {"", None, "0", "00000000-0000-0000-0000-000000000000", "null", "NULL"}
+    has_valid_id = normalized_id not in invalid_placeholders
+
+    has_actual_pre = bool(have_pre_flag and has_valid_id)
+    if have_pre_flag and not has_valid_id:
+        logger.warning(
+            "API returned havePreInscription=true without a valid preInscriptionId "
+            f"during {log_context}. raw_pre_inscription_id={raw_pre_inscription_id!r}"
+        )
+
+    return normalized_id if has_valid_id else None, has_actual_pre
 
 def _translate_api_error(error_string, operation_name="العملية"):
     if not error_string:
@@ -121,9 +139,9 @@ class FetchInitialInfoThread(QThread):
                     logger.info(f"العضو {self.member.nin} ( {self.member.get_full_name_ar()} ) مستفيد حاليًا من المنحة، تاريخ البدء: {date_debut}.")
                 else:
                     is_eligible_from_validate = data_val.get("eligible", False)
-                    raw_pre_inscription_id = data_val.get("preInscriptionId")
-                    self.member.pre_inscription_id = raw_pre_inscription_id
-                    self.member.has_actual_pre_inscription = bool(data_val.get("havePreInscription", False) and raw_pre_inscription_id)
+                    normalized_pre_id, has_actual_pre = _extract_pre_inscription_state(data_val, log_context="initial validate")
+                    self.member.pre_inscription_id = normalized_pre_id
+                    self.member.has_actual_pre_inscription = has_actual_pre
                     self.member.already_has_rdv = data_val.get("haveRendezVous", False)
                     valid_input = data_val.get("validInput", True)
                     self.member.demandeur_id = data_val.get("demandeurId")
@@ -660,9 +678,9 @@ class MonitoringThread(QThread):
                 self._emit_global_log(f"مستفيد حاليًا.", is_general=False, member_obj=member_obj, member_idx=main_list_idx)
                 validation_can_progress = False 
             else: 
-                raw_pre_inscription_id = data.get("preInscriptionId")
-                member_obj.pre_inscription_id = raw_pre_inscription_id
-                member_obj.has_actual_pre_inscription = bool(data.get("havePreInscription", False) and raw_pre_inscription_id)
+                normalized_pre_id, has_actual_pre = _extract_pre_inscription_state(data, log_context="monitoring validate")
+                member_obj.pre_inscription_id = normalized_pre_id
+                member_obj.has_actual_pre_inscription = has_actual_pre
                 member_obj.already_has_rdv = data.get("haveRendezVous", False)
                 valid_input = data.get("validInput", True)
                 member_obj.demandeur_id = data.get("demandeurId")
