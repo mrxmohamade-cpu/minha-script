@@ -645,7 +645,6 @@ class FirebaseService:
                 query = (
                     self.db.collection(FIRESTORE_MESSAGES_COLLECTION)
                     .where("active", "==", True)
-                    .order_by("createdAt", direction=firestore.Query.DESCENDING)
                 )
                 if limit_count > 0:
                     query = query.limit(limit_count)
@@ -659,7 +658,7 @@ class FirebaseService:
             except Exception as e:
                 logger.exception("FirebaseService (User): Error polling app messages: %s", e)
                 if callback_on_update:
-                    callback_on_update(None, f"حدث خطأ أثناء جلب رسائل التطبيق: {e}")
+                    callback_on_update([], f"حدث خطأ أثناء جلب رسائل التطبيق: {e}")
                 # Brief pause before next attempt handled by wait above
 
     def listen_to_app_messages(self, callback_on_update, limit_count=20):
