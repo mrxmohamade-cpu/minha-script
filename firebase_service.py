@@ -54,6 +54,7 @@ class FirebaseService:
             # --- For messaging ---
             self._message_listener = None # Single listener for all messages for now
             self._message_listener_stop_event = threading.Event()
+            self._message_poll_thread = None
             self.current_device_id_for_messaging = None # Will be set after device info is fetched
 
 
@@ -598,51 +599,68 @@ class FirebaseService:
         self._listener_stop_events.pop(code_id, None) # إزالة حدث الإيقاف
 
     # --- Messaging Methods ---
-    def _on_app_messages_snapshot(self, col_snapshot, changes, read_time, user_callback, stop_event):
-        if stop_event.is_set():
-            logger.info("FirebaseService (User): Stop event set for app_messages listener. Not processing snapshot.")
-            if self._message_listener:
-                try:
-                    self._message_listener.unsubscribe()
-                    self._message_listener = None
-                except Exception: pass
-            return
-
-        logger.debug(f"FirebaseService (User): Snapshot received for app_messages. Number of documents: {len(col_snapshot)}. Changes: {len(changes)}")
-        
+    def _process_app_message_docs(self, doc_snapshots, user_callback):
         processed_messages = []
-        if col_snapshot:
-            for doc_snapshot in col_snapshot:
-                if doc_snapshot.exists:
-                    msg_data = doc_snapshot.to_dict()
-                    msg_data['id'] = doc_snapshot.id
-                    
-                    # Normalize timestamps
-                    for ts_field in ['createdAt', 'expiresAt', 'updatedAt']:
-                        if ts_field in msg_data and msg_data[ts_field] is not None:
-                            msg_data[ts_field] = self._normalize_timestamp(msg_data[ts_field])
-                    
-                    # Check if current device has read this message
-                    msg_data['is_read_by_current_device'] = False # Default
-                    if self.current_device_id_for_messaging:
-                        try:
-                            read_receipt_ref = self.db.collection(FIRESTORE_MESSAGES_COLLECTION).document(doc_snapshot.id)\
-                                                 .collection(FIRESTORE_USER_READ_MESSAGES_SUBCOLLECTION).document(self.current_device_id_for_messaging)
-                            read_receipt_doc = read_receipt_ref.get(transaction=self.db.transaction()) # Use transaction for potentially better consistency
-                            if read_receipt_doc.exists:
-                                msg_data['is_read_by_current_device'] = True
-                        except Exception as e_read_receipt:
-                            logger.error(f"FirebaseService (User): Error checking read receipt for message {doc_snapshot.id} by device {self.current_device_id_for_messaging}: {e_read_receipt}")
-                    
-                    processed_messages.append(msg_data)
-        
+        for doc_snapshot in doc_snapshots:
+            if not getattr(doc_snapshot, "exists", False):
+                continue
+
+            msg_data = doc_snapshot.to_dict()
+            msg_data['id'] = doc_snapshot.id
+
+            # Normalize timestamps
+            for ts_field in ['createdAt', 'expiresAt', 'updatedAt']:
+                if ts_field in msg_data and msg_data[ts_field] is not None:
+                    msg_data[ts_field] = self._normalize_timestamp(msg_data[ts_field])
+
+            # Check if current device has read this message
+            msg_data['is_read_by_current_device'] = False # Default
+            if self.current_device_id_for_messaging:
+                try:
+                    read_receipt_ref = self.db.collection(FIRESTORE_MESSAGES_COLLECTION).document(doc_snapshot.id)\
+                                             .collection(FIRESTORE_USER_READ_MESSAGES_SUBCOLLECTION).document(self.current_device_id_for_messaging)
+                    read_receipt_doc = read_receipt_ref.get()
+                    if read_receipt_doc.exists:
+                        msg_data['is_read_by_current_device'] = True
+                except Exception as e_read_receipt:
+                    logger.error(f"FirebaseService (User): Error checking read receipt for message {doc_snapshot.id} by device {self.current_device_id_for_messaging}: {e_read_receipt}")
+
+            processed_messages.append(msg_data)
+
         if user_callback:
             try:
-                # Sort messages by createdAt in descending order (newest first) before sending to callback
-                sorted_messages = sorted(processed_messages, key=lambda m: m.get('createdAt', datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)), reverse=True)
+                sorted_messages = sorted(
+                    processed_messages,
+                    key=lambda m: m.get('createdAt', datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)),
+                    reverse=True,
+                )
                 user_callback(sorted_messages, None)
             except Exception as e:
                 logger.exception(f"FirebaseService (User): Error in user_callback for app_messages: {e}")
+
+    def _poll_app_messages(self, callback_on_update, limit_count):
+        logger.info("FirebaseService (User): Starting polling loop for app messages to avoid stream disconnects.")
+        while not self._message_listener_stop_event.wait(15):
+            try:
+                query = (
+                    self.db.collection(FIRESTORE_MESSAGES_COLLECTION)
+                    .where("active", "==", True)
+                    .order_by("createdAt", direction=firestore.Query.DESCENDING)
+                )
+                if limit_count > 0:
+                    query = query.limit(limit_count)
+
+                docs = list(query.stream())
+                logger.debug("FirebaseService (User): Polled %s active messages.", len(docs))
+                self._process_app_message_docs(docs, callback_on_update)
+            except google_exceptions.Cancelled as e:
+                logger.warning("FirebaseService (User): App messages polling cancelled (likely idle). Continuing. Details: %s", e)
+                continue
+            except Exception as e:
+                logger.exception("FirebaseService (User): Error polling app messages: %s", e)
+                if callback_on_update:
+                    callback_on_update(None, f"حدث خطأ أثناء جلب رسائل التطبيق: {e}")
+                # Brief pause before next attempt handled by wait above
 
     def listen_to_app_messages(self, callback_on_update, limit_count=20):
         if not self.is_initialized():
@@ -650,66 +668,38 @@ class FirebaseService:
             if callback_on_update: callback_on_update(None, "Firebase service not initialized.")
             return False
 
-        if self._message_listener is not None:
-            logger.info("FirebaseService (User): App messages listener already active. Stopping existing one.")
+        if self._message_poll_thread and self._message_poll_thread.is_alive():
+            logger.info("FirebaseService (User): App messages listener already running. Restarting it.")
             self.stop_listening_to_app_messages()
 
-        def _build_messages_query(use_ordering=True):
-            query = self.db.collection(FIRESTORE_MESSAGES_COLLECTION).where("active", "==", True)
-            if use_ordering:
-                query = query.order_by("createdAt", direction=firestore.Query.DESCENDING)
-            if limit_count > 0:
-                query = query.limit(limit_count)
-            return query
-
-        internal_cb = lambda col_sn, chgs, rt: self._on_app_messages_snapshot(col_sn, chgs, rt, callback_on_update, self._message_listener_stop_event)
-
         try:
-            # Start with an index-free query to avoid stream termination errors when composite indexes are missing on user setups.
-            self._message_listener_stop_event.clear() # Clear any previous stop event state
-            self._message_listener = _build_messages_query(use_ordering=False).on_snapshot(internal_cb)
-            logger.info(
-                "FirebaseService (User): Successfully started listening for app messages without ordering (limit: %s).",
-                limit_count,
+            self._message_listener_stop_event.clear()
+            self._message_poll_thread = threading.Thread(
+                target=self._poll_app_messages,
+                args=(callback_on_update, limit_count),
+                daemon=True,
+                name="AppMessagesPoll",
             )
+            self._message_poll_thread.start()
+            logger.info("FirebaseService (User): App messages polling started (limit: %s).", limit_count)
             return True
-        except google_exceptions.FailedPrecondition as e:
-            error_text = str(e)
-            if "requires an index" in error_text:
-                logger.error(
-                    "FirebaseService (User): App messages query still requires a composite index even without ordering. "
-                    "Stopping listener startup. Details: %s",
-                    error_text,
-                )
-                if callback_on_update:
-                    callback_on_update(None, "فشل بدء الاستماع لرسائل التطبيق بسبب نقص فهرس Firebase.")
-                return False
-            logger.exception("FirebaseService (User): FailedPrecondition starting app messages listener: %s", e)
-            if callback_on_update:
-                callback_on_update(None, f"تعذر بدء الاستماع لرسائل التطبيق: {e}")
-            return False
         except Exception as e:
-            logger.exception(f"FirebaseService (User): Error starting listener for app messages: {e}")
+            logger.exception(f"FirebaseService (User): Error starting polling for app messages: {e}")
             if callback_on_update:
-                callback_on_update(None, f"Error starting app messages listener: {e}")
+                callback_on_update(None, f"تعذر بدء جلب رسائل التطبيق: {e}")
             return False
 
     def stop_listening_to_app_messages(self):
         logger.info("FirebaseService (User): Attempting to stop app messages listener.")
-        self._message_listener_stop_event.set() # Signal the listener callback to stop processing and unsubscribe
+        self._message_listener_stop_event.set()
 
-        # The actual unsubscribe is handled within _on_app_messages_snapshot when stop_event is set.
-        # We can also try to unsubscribe here if the object exists, as a fallback.
-        if self._message_listener:
-            try:
-                self._message_listener.unsubscribe()
-                logger.info("FirebaseService (User): Successfully unsubscribed from app messages listener.")
-            except Exception as e:
-                logger.exception(f"FirebaseService (User): Error directly unsubscribing app messages listener: {e}")
-            finally:
-                self._message_listener = None
-        else:
-            logger.info("FirebaseService (User): No active app messages listener watch object found to stop.")
+        if self._message_poll_thread and self._message_poll_thread.is_alive():
+            self._message_poll_thread.join(timeout=5)
+            if self._message_poll_thread.is_alive():
+                logger.warning("FirebaseService (User): App messages polling thread did not stop within timeout.")
+            else:
+                logger.info("FirebaseService (User): App messages polling stopped.")
+        self._message_poll_thread = None
 
     def mark_message_as_read(self, message_id):
         if not self.is_initialized():
