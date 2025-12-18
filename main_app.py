@@ -779,8 +779,10 @@ class AnemApp(QMainWindow):
         self.statusBar = QStatusBar()
         self.setStatusBar(self.statusBar)
         self.status_bar_label = QLabel("جاهز.")
-        self.last_scan_label = QLabel("")
-        self.countdown_label = QLabel("")
+        self.last_scan_label = QLabel("آخر حدث: --:--:--")
+        self.last_scan_label.setToolTip("توقيت آخر رسالة أو عملية")
+        self.countdown_label = QLabel("⏸️ لا يوجد عد تنازلي")
+        self.countdown_label.setToolTip("الوقت المتبقي قبل الخطوة التالية")
         
         # إنشاء زر الرسائل في شريط الحالة
         self.messages_button_status_bar = QToolButton(self)
@@ -1968,23 +1970,25 @@ class AnemApp(QMainWindow):
             member_display = self._get_member_display_name_with_index(member_obj, original_idx_if_member)
             final_message = f"{member_display}: {message}"
 
-        if hasattr(self, 'status_bar_label'): 
+        if hasattr(self, 'status_bar_label'):
             self.status_bar_label.setText(final_message)
 
-        if hasattr(self, 'last_scan_label'): 
-            if not is_general_message or "انتهاء دورة الفحص" in message or "بدء دورة فحص جديدة" in message or "استئناف المراقبة" in message or "الموقع لا يزال غير متاح" in message or "اكتمل الفحص الأولي" in message:
-                self.last_scan_label.setText(f"آخر تحديث: {time.strftime('%H:%M:%S')}")
-            elif is_general_message: 
-                self.last_scan_label.setText("")
+        if hasattr(self, 'last_scan_label'):
+            self.last_scan_label.setText(f"آخر حدث: {time.strftime('%H:%M:%S')}")
 
-        if hasattr(self, 'countdown_label'): 
-            if is_general_message and hasattr(self, 'last_scan_label') and self.last_scan_label.text() == "":
-                 self.countdown_label.setText("")
+        if hasattr(self, 'countdown_label') and self.countdown_label.text().strip() == "":
+            self.countdown_label.setText("⏸️ لا يوجد عد تنازلي")
 
 
     def update_countdown_timer_display(self, time_remaining_str):
-        if hasattr(self, 'countdown_label'): 
-            self.countdown_label.setText(time_remaining_str)
+        if hasattr(self, 'countdown_label'):
+            display_text = time_remaining_str.strip()
+            if display_text:
+                self.countdown_label.setText(f"⏳ {display_text}")
+                self.countdown_label.setToolTip("الوقت المتبقي قبل تنفيذ الخطوة التالية")
+            else:
+                self.countdown_label.setText("⏸️ لا يوجد عد تنازلي")
+                self.countdown_label.setToolTip("لا يوجد انتظار حالي")
 
 
     def start_monitoring(self):
