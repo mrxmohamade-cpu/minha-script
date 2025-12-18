@@ -622,41 +622,33 @@ class FirebaseService:
         internal_cb = lambda col_sn, chgs, rt: self._on_app_messages_snapshot(col_sn, chgs, rt, callback_on_update, self._message_listener_stop_event)
 
         try:
-            # Try the fully-specified query first (matching the intended logic and ordering)
+            # Start with an index-free query to avoid stream termination errors when composite indexes are missing on user setups.
             self._message_listener_stop_event.clear() # Clear any previous stop event state
-            self._message_listener = _build_messages_query(use_ordering=True).on_snapshot(internal_cb)
-            logger.info(f"FirebaseService (User): Successfully started listening for app messages (limit: {limit_count}).")
+            self._message_listener = _build_messages_query(use_ordering=False).on_snapshot(internal_cb)
+            logger.info(
+                "FirebaseService (User): Successfully started listening for app messages without ordering (limit: %s).",
+                limit_count,
+            )
             return True
         except google_exceptions.FailedPrecondition as e:
-            # Firestore raises FailedPrecondition when the query requires a missing composite index
             error_text = str(e)
             if "requires an index" in error_text:
                 logger.error(
-                    "FirebaseService (User): App messages query requires a composite index. "
-                    "Listener will fall back to unsorted results. Details: %s", error_text
+                    "FirebaseService (User): App messages query still requires a composite index even without ordering. "
+                    "Stopping listener startup. Details: %s",
+                    error_text,
                 )
                 if callback_on_update:
-                    callback_on_update(None, "خدمة Firebase تتطلب فهرسًا مركبًا لرسائل التطبيق. سيتم استخدام ترتيب افتراضي دون فرز.")
-                try:
-                    self._message_listener_stop_event.clear()
-                    self._message_listener = _build_messages_query(use_ordering=False).on_snapshot(internal_cb)
-                    logger.info("FirebaseService (User): Fallback app messages listener started without ordering.")
-                    return True
-                except Exception as fallback_error:
-                    logger.exception(
-                        "FirebaseService (User): Fallback listener without ordering failed: %s", fallback_error
-                    )
-                    if callback_on_update:
-                        callback_on_update(None, f"تعذر بدء الاستماع لرسائل التطبيق (فشل التبديل الاحتياطي): {fallback_error}")
-                    return False
-            # Re-raise for any other precondition failures
+                    callback_on_update(None, "فشل بدء الاستماع لرسائل التطبيق بسبب نقص فهرس Firebase.")
+                return False
             logger.exception("FirebaseService (User): FailedPrecondition starting app messages listener: %s", e)
             if callback_on_update:
                 callback_on_update(None, f"تعذر بدء الاستماع لرسائل التطبيق: {e}")
             return False
         except Exception as e:
             logger.exception(f"FirebaseService (User): Error starting listener for app messages: {e}")
-            if callback_on_update: callback_on_update(None, f"Error starting app messages listener: {e}")
+            if callback_on_update:
+                callback_on_update(None, f"Error starting app messages listener: {e}")
             return False
 
     def stop_listening_to_app_messages(self):
