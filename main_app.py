@@ -151,6 +151,7 @@ class AnemApp(QMainWindow):
         self.filtered_members_list = []
         self.is_filter_active = False
         self.last_added_member_index = None
+        self.member_overview_selected_index = None
 
         self.api_client = AnemAPIClient(
             initial_backoff_general=self.settings.get(SETTING_BACKOFF_GENERAL, DEFAULT_SETTINGS[SETTING_BACKOFF_GENERAL]),
@@ -164,6 +165,7 @@ class AnemApp(QMainWindow):
         self.active_spinner_row_in_view = -1
         self.spinner_char_idx = 0
         self.spinner_chars = ['◐', '◓', '◑', '◒']
+        self.latest_countdown_text = "لا يوجد انتظار حالي"
 
         # عناصر شريط الحالة المحسّنة
         self.status_spinner_idx = 0
@@ -821,6 +823,57 @@ class AnemApp(QMainWindow):
 
         main_layout.addWidget(self.operation_panel_frame)
 
+        # لوحة نظرة سريعة على العضو المحدد/النشط
+        self.member_overview_frame = QFrame(self)
+        self.member_overview_frame.setObjectName("MemberOverview")
+        overview_layout = QVBoxLayout(self.member_overview_frame)
+        overview_layout.setContentsMargins(12, 8, 12, 8)
+        overview_layout.setSpacing(6)
+
+        self.member_overview_title = QLabel("👤 لا يوجد عضو محدد")
+        self.member_overview_title.setObjectName("MemberOverviewTitle")
+
+        self.member_overview_state = QLabel("الحالة: --")
+        self.member_overview_state.setObjectName("MemberOverviewState")
+        self.member_overview_state.setWordWrap(True)
+
+        self.member_overview_next = QLabel("الخطوة القادمة: --")
+        self.member_overview_next.setObjectName("MemberOverviewNext")
+        self.member_overview_next.setWordWrap(True)
+
+        self.member_overview_wait = QLabel("الانتظار/التحميل: --")
+        self.member_overview_wait.setObjectName("MemberOverviewWait")
+        self.member_overview_wait.setWordWrap(True)
+
+        self.member_overview_last = QLabel("آخر رسالة: --")
+        self.member_overview_last.setObjectName("MemberOverviewLast")
+        self.member_overview_last.setWordWrap(True)
+
+        self.member_overview_hint = QLabel("اختر عضوًا لمعرفة تفاصيل حالته وخطوته القادمة.")
+        self.member_overview_hint.setObjectName("MemberOverviewHint")
+        self.member_overview_hint.setWordWrap(True)
+
+        overview_layout.addWidget(self.member_overview_title)
+        overview_layout.addWidget(self.member_overview_state)
+        overview_layout.addWidget(self.member_overview_next)
+        overview_layout.addWidget(self.member_overview_wait)
+        overview_layout.addWidget(self.member_overview_last)
+        overview_layout.addWidget(self.member_overview_hint)
+
+        self.member_overview_frame.setStyleSheet(
+            """
+            QFrame#MemberOverview { background: #0f141a; border: 1px solid #2c3642; border-radius: 10px; }
+            QLabel#MemberOverviewTitle { color: #e9eef5; font-weight: 700; font-size: 14px; }
+            QLabel#MemberOverviewState { color: #d1e8ff; font-weight: 600; }
+            QLabel#MemberOverviewNext { color: #c7f0d8; }
+            QLabel#MemberOverviewWait { color: #f5e6c5; }
+            QLabel#MemberOverviewLast { color: #d8dee9; }
+            QLabel#MemberOverviewHint { color: #a3b1c2; font-style: italic; }
+            """
+        )
+
+        main_layout.addWidget(self.member_overview_frame)
+
 
         self.statusBar = QStatusBar()
         self.statusBar.setObjectName("MainStatusBar")
@@ -914,7 +967,8 @@ class AnemApp(QMainWindow):
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.verticalHeader().setDefaultSectionSize(30)
         self.table.itemDoubleClicked.connect(self.edit_member_details)
-        self.table.verticalHeader().setVisible(True) 
+        self.table.verticalHeader().setVisible(True)
+        self.table.itemSelectionChanged.connect(self._refresh_member_overview_from_selection)
         main_layout.addWidget(self.table)
 
 
@@ -1183,6 +1237,130 @@ class AnemApp(QMainWindow):
             return self.last_added_member_index
 
         return None
+
+    def _refresh_member_overview_from_selection(self):
+        selection_model = self.table.selectionModel()
+        if not selection_model or not selection_model.selectedRows():
+            self.member_overview_selected_index = None
+            self._set_member_overview_content(None)
+            return
+
+        row = selection_model.selectedRows()[0].row()
+        current_list_for_view = self.filtered_members_list if self.is_filter_active else self.members_list
+        if not (0 <= row < len(current_list_for_view)):
+            self.member_overview_selected_index = None
+            self._set_member_overview_content(None)
+            return
+
+        member = current_list_for_view[row]
+        try:
+            self.member_overview_selected_index = self.members_list.index(member)
+        except ValueError:
+            self.member_overview_selected_index = None
+            self._set_member_overview_content(None)
+            return
+
+        self._set_member_overview_content(member)
+
+    def _badge_for_status(self, status_text):
+        if not status_text:
+            return "ℹ️"
+        if any(keyword in status_text for keyword in ["خطأ", "فشل"]):
+            return "⚠️"
+        if any(keyword in status_text for keyword in ["جاري", "انتظار", "معالجة", "تحميل"]):
+            return "🔄"
+        if any(keyword in status_text for keyword in ["تم الحجز", "مكتمل", "موعد", "مستفيد"]):
+            return "✅"
+        if "جديد" in status_text:
+            return "🆕"
+        return "ℹ️"
+
+    def _describe_member_next_step(self, member):
+        if member.have_allocation:
+            return "المستخدم مستفيد حاليًا، لا حاجة للحجز."
+        if member.already_has_rdv or member.rdv_date:
+            return "موعد مؤكد، تأكد من تنزيل وطباعة الشهادات."
+        if member.has_actual_pre_inscription:
+            return "يتم البحث عن موعد وحجزه فور توفره."
+        if member.pre_inscription_id:
+            return "بيانات التسجيل المسبق جاهزة، بانتظار فتح مواعيد."
+        return "يحتاج للتأكد من بيانات التسجيل المسبق ثم بدء البحث عن موعد."
+
+    def _get_member_wait_text(self, member):
+        if member.is_processing:
+            return "المعالجة جارية لهذا العضو الآن."
+        return self.latest_countdown_text
+
+    def _set_member_overview_content(self, member, status_override=None, next_text=None, wait_text=None, last_msg=None, hint_text=None):
+        if not hasattr(self, 'member_overview_title'):
+            return
+
+        if member is None:
+            self.member_overview_title.setText("👤 لا يوجد عضو محدد")
+            self.member_overview_state.setText("الحالة: --")
+            self.member_overview_next.setText("الخطوة القادمة: --")
+            self.member_overview_wait.setText("الانتظار/التحميل: --")
+            self.member_overview_last.setText("آخر رسالة: --")
+            self.member_overview_hint.setText("اختر عضوًا لمعرفة تفاصيل حالته وخطوته القادمة.")
+            return
+
+        try:
+            member_index_display = self.members_list.index(member) + 1
+        except ValueError:
+            member_index_display = "?"
+
+        display_name = member.get_full_name_ar() or member.nin
+        self.member_overview_title.setText(f"👤 {display_name} (رقم {member_index_display})")
+
+        status_text = status_override or member.status or "غير محدد"
+        badge = self._badge_for_status(status_text)
+        self.member_overview_state.setText(f"الحالة: {badge} {status_text}")
+
+        computed_next = next_text or self._describe_member_next_step(member)
+        self.member_overview_next.setText(f"الخطوة القادمة: {computed_next}")
+
+        wait_display = wait_text or self._get_member_wait_text(member)
+        self.member_overview_wait.setText(f"الانتظار/التحميل: {wait_display}")
+
+        last_detail = last_msg or member.full_last_activity_detail or member.last_activity_detail or "لا توجد رسائل بعد."
+        self.member_overview_last.setText(f"آخر رسالة: {last_detail}")
+
+        if hint_text:
+            self.member_overview_hint.setText(hint_text)
+        else:
+            hint_parts = []
+            if member.already_has_rdv or member.rdv_date:
+                hint_parts.append("يُمكن تحميل شهادات الموعد والتعهد عند الحاجة.")
+            elif member.has_actual_pre_inscription:
+                hint_parts.append("سيتم الحجز تلقائيًا عند ظهور مواعيد.")
+            else:
+                hint_parts.append("تأكد من اكتمال بيانات التسجيل المسبق ورفع الدقة للاتصال.")
+            if member.have_allocation:
+                hint_parts.append("الحالة مكتملة كمستفيد حالي، لا حاجة لإعادة الحجز.")
+            self.member_overview_hint.setText(" • ".join(hint_parts))
+
+    def _ensure_table_selection_after_refresh(self):
+        if self.table.rowCount() == 0:
+            self.member_overview_selected_index = None
+            self._set_member_overview_content(None)
+            return
+
+        selection_model = self.table.selectionModel()
+        if selection_model and selection_model.hasSelection():
+            self._refresh_member_overview_from_selection()
+            return
+
+        # حاول اختيار آخر عضو مضاف أو أول صف
+        target_index = None
+        if self.last_added_member_index is not None and 0 <= self.last_added_member_index < len(self.members_list):
+            target_index = self.last_added_member_index
+        else:
+            target_index = 0
+
+        row_selected = self._select_row_by_member_index(target_index, ensure_visible=False)
+        if row_selected >= 0:
+            self.member_overview_selected_index = target_index
+            self._refresh_member_overview_from_selection()
 
     def trigger_manual_check_for_selected(self):
         target_index = self._resolve_member_index_for_check()
@@ -1635,8 +1813,8 @@ class AnemApp(QMainWindow):
 
         member_display_name = self._get_member_display_name_with_index(member, original_member_index)
         if is_processing_now:
-            self.active_spinner_row_in_view = row_in_table_to_update 
-            self.spinner_char_idx = 0 
+            self.active_spinner_row_in_view = row_in_table_to_update
+            self.spinner_char_idx = 0
 
             self.table.selectRow(row_in_table_to_update)
             first_column_item = self.table.item(row_in_table_to_update, 0) 
@@ -1650,27 +1828,40 @@ class AnemApp(QMainWindow):
 
             self.highlight_processing_row(row_in_table_to_update, force_processing_display=True) 
 
-            if not self.row_spinner_timer.isActive(): 
+            if not self.row_spinner_timer.isActive():
                 self.row_spinner_timer.start(self.row_spinner_timer_interval)
 
             self.update_status_bar_message(f"جاري معالجة العضو: {member_display_name}...", is_general_message=False)
+            self._set_member_overview_content(
+                member,
+                status_override=f"جاري المعالجة ({member.status})",
+                wait_text="المعالجة جارية لهذا العضو الآن.",
+                last_msg=member.full_last_activity_detail or member.last_activity_detail,
+            )
 
-        else: 
+        else:
             is_still_pdf_downloading = self.active_download_all_pdfs_threads.get(original_member_index) and \
                                        self.active_download_all_pdfs_threads[original_member_index].isRunning()
             is_still_single_checking = self.single_check_thread and \
                                        self.single_check_thread.isRunning() and \
                                        self.single_check_thread.index == original_member_index
 
-            if not is_still_pdf_downloading and not is_still_single_checking: 
-                if self.active_spinner_row_in_view == row_in_table_to_update: 
+            if not is_still_pdf_downloading and not is_still_single_checking:
+                if self.active_spinner_row_in_view == row_in_table_to_update:
                     self.row_spinner_timer.stop()
-                    self.active_spinner_row_in_view = -1 
+                    self.active_spinner_row_in_view = -1
                     icon_item = self.table.item(row_in_table_to_update, self.COL_ICON)
                     if icon_item:
-                        icon_item.setText("") 
+                        icon_item.setText("")
 
-            self.highlight_processing_row(row_in_table_to_update, force_processing_display=False) 
+            self.highlight_processing_row(row_in_table_to_update, force_processing_display=False)
+            if self.member_overview_selected_index == original_member_index:
+                self._set_member_overview_content(
+                    member,
+                    status_override=member.status,
+                    wait_text=self.latest_countdown_text,
+                    last_msg=member.full_last_activity_detail or member.last_activity_detail,
+                )
 
 
     def highlight_processing_row(self, row_index_in_table, force_processing_display=None):
@@ -1983,13 +2174,14 @@ class AnemApp(QMainWindow):
 
 
     def update_table(self):
-        self.table.setRowCount(0) 
+        self.table.setRowCount(0)
         list_to_display = self.filtered_members_list if self.is_filter_active else self.members_list
         for row_idx, member_obj in enumerate(list_to_display):
             self.table.insertRow(row_idx)
-            self.update_table_row(row_idx, member_obj) 
-        if not self.is_filter_active: 
+            self.update_table_row(row_idx, member_obj)
+        if not self.is_filter_active:
             self.save_members_data()
+        self._ensure_table_selection_after_refresh()
 
     def update_table_row(self, row_in_table, member):
         item_icon = QTableWidgetItem()
@@ -2094,13 +2286,21 @@ class AnemApp(QMainWindow):
 
         if icon_item:
             if self.active_spinner_row_in_view == row_in_table_to_update and member.is_processing:
-                icon_item.setIcon(QIcon()) 
-            else: 
+                icon_item.setIcon(QIcon())
+            else:
                 qt_icon = self.style().standardIcon(getattr(QStyle, icon_name_str, QStyle.SP_CustomBase))
                 icon_item.setIcon(qt_icon)
-                icon_item.setText("") 
+                icon_item.setText("")
 
         self.highlight_processing_row(row_in_table_to_update, force_processing_display=None)
+
+        if self.member_overview_selected_index == original_member_index:
+            self._set_member_overview_content(
+                member,
+                status_override=status_text,
+                wait_text=self._get_member_wait_text(member),
+                last_msg=member.full_last_activity_detail or member.last_activity_detail,
+            )
 
         msg_attr_prefix = f"_toast_shown_{original_member_index}_" 
         if not self.suppress_initial_messages: 
@@ -2274,11 +2474,17 @@ class AnemApp(QMainWindow):
                 self.countdown_label.setToolTip("الوقت المتبقي قبل تنفيذ الخطوة التالية")
                 self._update_refresh_hint(f"العد التنازلي: {display_text}", busy=True)
                 self._set_operation_panel(next_text="متابعة بعد اكتمال العد", level="info")
+                self.latest_countdown_text = display_text
             else:
                 self.countdown_label.setText("⏸️ لا يوجد عد تنازلي")
                 self.countdown_label.setToolTip("لا يوجد انتظار حالي")
                 self._update_refresh_hint("لا يوجد تحديث نشط", busy=False)
                 self._set_operation_panel(wait_seconds=0, level="info")
+                self.latest_countdown_text = "لا يوجد انتظار حالي"
+
+            if self.member_overview_selected_index is not None and 0 <= self.member_overview_selected_index < len(self.members_list):
+                target_member = self.members_list[self.member_overview_selected_index]
+                self._set_member_overview_content(target_member, wait_text=self.latest_countdown_text)
 
 
     def start_monitoring(self):
