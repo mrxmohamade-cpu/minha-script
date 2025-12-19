@@ -1943,9 +1943,22 @@ class AnemApp(QMainWindow):
                 )
 
 
+    def _status_marker_and_color(self, status_text):
+        """Return a soft marker bullet and color for status text with minimal palette."""
+        accent = QColor("#9ab7ff")
+        warning = QColor("#f2b8b5")
+        marker = "• "
+
+        lowered = status_text or ""
+        is_warning = any(keyword in lowered for keyword in [
+            "فشل", "خطأ", "غير مؤهل", "غير صالح", "منتهي", "إلغاء"
+        ])
+        color = warning if is_warning else accent
+        return marker, color
+
     def highlight_processing_row(self, row_index_in_table, force_processing_display=None):
         if not (0 <= row_index_in_table < self.table.rowCount()):
-            return 
+            return
 
         current_list_displayed = self.filtered_members_list if self.is_filter_active else self.members_list
         if row_index_in_table >= len(current_list_displayed): 
@@ -1961,40 +1974,34 @@ class AnemApp(QMainWindow):
 
         default_bg_color = self.table.palette().color(QPalette.Base)
         alternate_bg_color = QColor(self.table.palette().color(QPalette.AlternateBase)) if self.table.alternatingRowColors() else default_bg_color
-        processing_bg_color = QColorConstants.PROCESSING_ROW_DARK_THEME
-        selection_bg_color_from_qss = QColor("#00A2E8") 
+        processing_bg_color = QColor(30, 37, 52)
+        selection_bg_color_from_qss = QColor("#0e6ad5")
 
         for col in range(self.table.columnCount()):
             item = self.table.item(row_index_in_table, col)
             if item:
-                if is_processing_flag: 
-                    item.setBackground(processing_bg_color)
-                    item.setForeground(Qt.white)
-                elif is_row_selected_by_user_or_code: 
-                    if item.background() != selection_bg_color_from_qss: 
-                         item.setBackground(selection_bg_color_from_qss)
-                    if item.foreground().color() != Qt.white: 
-                         item.setForeground(Qt.white)
-                else: 
-                    status_text_for_color = member.status
-                    specific_color = None
-                    if status_text_for_color == "مستفيد حاليًا من المنحة": specific_color = QColorConstants.BENEFITING_GREEN_DARK_THEME
-                    elif status_text_for_color == "بيانات الإدخال خاطئة": specific_color = QColorConstants.PINK_DARK_THEME
-                    elif status_text_for_color == "لديه موعد مسبق": specific_color = QColorConstants.LIGHT_BLUE_DARK_THEME
-                    elif status_text_for_color == "غير مؤهل للحجز": specific_color = QColorConstants.ORANGE_RED_DARK_THEME
-                    elif status_text_for_color == "مكتمل": specific_color = QColorConstants.LIGHT_GREEN_DARK_THEME
-                    elif "فشل" in status_text_for_color or "غير مؤهل" in status_text_for_color or "خطأ" in status_text_for_color:
-                        specific_color = QColorConstants.LIGHT_PINK_DARK_THEME
-                    elif "يتطلب تسجيل مسبق" in status_text_for_color: specific_color = QColorConstants.LIGHT_YELLOW_DARK_THEME
-
-                    if specific_color:
-                        item.setBackground(specific_color)
-                    else: 
-                        if self.table.alternatingRowColors() and row_index_in_table % 2 != 0 :
-                            item.setBackground(alternate_bg_color)
-                        else:
-                            item.setBackground(default_bg_color)
-                    item.setForeground(self.table.palette().color(QPalette.Text)) 
+                if is_processing_flag:
+                    item.setBackground(processing_bg_color if col != self.COL_STATUS else default_bg_color)
+                    if col == self.COL_STATUS:
+                        _, status_color = self._status_marker_and_color(member.status)
+                        item.setForeground(status_color)
+                    else:
+                        item.setForeground(self.table.palette().color(QPalette.Text))
+                elif is_row_selected_by_user_or_code:
+                    if item.background() != selection_bg_color_from_qss:
+                        item.setBackground(selection_bg_color_from_qss)
+                    if item.foreground().color() != Qt.white:
+                        item.setForeground(Qt.white)
+                else:
+                    if self.table.alternatingRowColors() and row_index_in_table % 2 != 0:
+                        item.setBackground(alternate_bg_color)
+                    else:
+                        item.setBackground(default_bg_color)
+                    if col == self.COL_STATUS:
+                        _, status_color = self._status_marker_and_color(member.status)
+                        item.setForeground(status_color)
+                    else:
+                        item.setForeground(self.table.palette().color(QPalette.Text))
 
 
     def add_member(self):
@@ -2362,7 +2369,9 @@ class AnemApp(QMainWindow):
 
         icon_item = self.table.item(row_in_table_to_update, self.COL_ICON)
         status_text_item = self.table.item(row_in_table_to_update, self.COL_STATUS)
-        status_text_item.setText(status_text) 
+        marker, color = self._status_marker_and_color(status_text)
+        status_text_item.setText(f"{marker}{status_text}" if status_text else "")
+        status_text_item.setForeground(color)
 
         if icon_item:
             if self.active_spinner_row_in_view == row_in_table_to_update and member.is_processing:
