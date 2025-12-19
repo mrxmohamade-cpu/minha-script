@@ -75,6 +75,22 @@ def load_custom_fonts():
     if loaded_fonts_count > 0: logger.info(f"تم تحميل {loaded_fonts_count} خطوط مخصصة بنجاح.")
     else: logger.warning("لم يتم تحميل أي خطوط مخصصة.")
 
+    # اختر خطًا عربيًا واضحًا مع تفضيل التنعيم لتحسين القراءة.
+    available_families = QFontDatabase().families()
+    preferred_fonts = [
+        "Cairo", "Tajawal", "Noto Kufi Arabic", "Noto Sans Arabic", "Segoe UI", "Arial"
+    ]
+    chosen_font_family = QApplication.font().family()
+    for family in preferred_fonts:
+        if family in available_families:
+            chosen_font_family = family
+            break
+
+    app_font = QFont(chosen_font_family, 10)
+    app_font.setStyleStrategy(QFont.PreferAntialias)
+    app_font.setHintingPreference(QFont.PreferFullHinting)
+    QApplication.setFont(app_font)
+
 class ActivationProcessingThread(QThread):
     activation_finished = pyqtSignal(bool, str, object)
 

@@ -2,9 +2,11 @@
 
 QWidget {
     background-color: #0b1220;
-    color: #dbe6f5;
-    font-family: "Tajawal", "Segoe UI", Arial, sans-serif;
-    font-size: 10pt;
+    color: #dfe7f5;
+    font-family: "Cairo", "Tajawal", "Noto Kufi Arabic", "Noto Sans Arabic", "Segoe UI", Arial, sans-serif;
+    font-size: 10.5pt;
+    font-weight: 500;
+    letter-spacing: 0.1px;
 }
 
 QMainWindow {
@@ -12,28 +14,31 @@ QMainWindow {
 }
 
 QFrame#HeaderFrame {
-    background: #0f172a;
-    border: 1px solid #141c2d;
+    background: #0f1728;
+    border: 1px solid rgba(255, 255, 255, 0.05);
     border-radius: 10px;
+    padding: 6px 10px;
 }
 
 QLabel#HeaderTitle {
     color: #f8fbff;
     font-size: 16pt;
     font-weight: 800;
+    letter-spacing: 0.15px;
 }
 
 QLabel#HeaderSubtitle {
     color: #9fb3c8;
     font-size: 9.5pt;
     font-weight: 500;
+    letter-spacing: 0.2px;
 }
 
 QLabel#SubscriptionBadge {
     background: #12324d;
     color: #d5e7ff;
-    padding: 6px 12px;
-    border: 1px solid #1f2f46;
+    padding: 5px 10px;
+    border: 1px solid rgba(223, 231, 245, 0.45);
     border-radius: 12px;
     font-weight: 700;
     min-width: 150px;
@@ -44,7 +49,7 @@ QPushButton#SubscriptionManageButton,
 QPushButton#SubscriptionRefreshButton {
     background: #0f172a;
     color: #dbe6f5;
-    border: 1px solid #1f2a36;
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 10px;
     padding: 7px 12px;
     font-weight: 700;
@@ -57,19 +62,21 @@ QPushButton#SubscriptionRefreshButton:hover {
 
 QFrame#FilterBar {
     background: #0d1423;
-    border: 1px solid #141c2d;
+    border: 1px solid rgba(255, 255, 255, 0.04);
     border-radius: 10px;
+    padding: 2px 6px;
 }
 
 QLineEdit, QComboBox {
     background: #0d1525;
-    color: #dbe6f5;
-    border: 1px solid #1f2a36;
+    color: #dfe7f5;
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 8px;
-    padding: 8px 10px;
+    padding: 7px 10px;
 }
 QLineEdit:focus, QComboBox:focus {
     border: 1px solid #2fa5e1;
+    box-shadow: 0 0 0 3px rgba(47, 165, 225, 0.12);
 }
 
 QPushButton {
@@ -79,6 +86,7 @@ QPushButton {
     border-radius: 10px;
     padding: 10px 14px;
     font-weight: 800;
+    letter-spacing: 0.2px;
 }
 QPushButton:hover { background: #2fa5e1; }
 QPushButton:pressed { background: #0f83c3; }
@@ -96,61 +104,65 @@ QFrame#OperationPanel,
 QFrame#ContentFrame,
 QFrame#ActivityPanel,
 QFrame#MemberOverview {
-    background: #0f172a;
-    border: 1px solid #1d2635;
+    background: #0f1726;
+    border: 1px solid rgba(255, 255, 255, 0.04);
     border-radius: 12px;
+    padding-top: 2px;
 }
 
 QFrame#StatCard {
-    background: #0f1726;
-    border: 1px solid #162134;
+    background: #0e1624;
+    border: 1px solid rgba(255, 255, 255, 0.05);
     border-radius: 12px;
-    padding: 8px;
+    padding: 6px 8px;
 }
-QLabel#StatCardTitle { color: #a8b8cc; font-weight: 600; font-size: 9.5pt; }
-QLabel#StatCardValue { color: #7ecdf7; font-weight: 800; font-size: 16px; }
-QLabel#StatCardSubtitle { color: #90a2ba; font-size: 9pt; }
+QLabel#StatCardTitle { color: #a8b8cc; font-weight: 600; font-size: 9pt; letter-spacing: 0.1px; }
+QLabel#StatCardValue { color: #89d8ff; font-weight: 800; font-size: 15px; }
+QLabel#StatCardSubtitle { color: #90a2ba; font-size: 8.8pt; }
 
-QLabel#OperationCurrent { color: #e5edf7; font-weight: 700; font-size: 10pt; }
-QLabel#OperationNext { color: #a3b2c7; font-size: 9.5pt; }
-QLabel#OperationTimer { color: #f6d58b; font-weight: 800; font-size: 10.5pt; }
+QLabel#OperationCurrent { color: #e5edf7; font-weight: 700; font-size: 9.8pt; }
+QLabel#OperationNext { color: #a3b2c7; font-size: 9pt; }
+QLabel#OperationTimer { color: #f6d58b; font-weight: 800; font-size: 10pt; letter-spacing: 0.2px; }
 
 QTableWidget {
     background: #0f1829;
     alternate-background-color: #121d30;
-    color: #e9f2ff;
-    border: 1px solid #223042;
-    gridline-color: #233042;
+    color: #eef3ff;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    gridline-color: rgba(255, 255, 255, 0.06);
     selection-background-color: #1993d6;
     selection-color: #04101c;
+    font-size: 10.5pt;
 }
 QHeaderView::section {
     background: #131f33;
     color: #f0f6ff;
     padding: 9px 6px;
-    border: 1px solid #1f2a36;
+    border: 1px solid rgba(255, 255, 255, 0.06);
     font-weight: 800;
+    letter-spacing: 0.15px;
 }
 QTableWidget::item { padding: 7px 8px; }
 QTableWidget::item:selected { background: #1993d6; color: #04101c; }
 
-QLabel#MemberOverviewTitle { font-weight: 800; font-size: 11pt; }
+QLabel#MemberOverviewTitle { font-weight: 800; font-size: 10.5pt; }
 QLabel#MemberOverviewState { color: #6bd8b5; font-weight: 700; }
-QLabel#MemberOverviewNext, QLabel#MemberOverviewWait, QLabel#MemberOverviewLast { color: #c3cfdf; font-size: 9.5pt; }
-QLabel#MemberOverviewHint { color: #9fb3c8; font-size: 9pt; }
+QLabel#MemberOverviewNext, QLabel#MemberOverviewWait, QLabel#MemberOverviewLast { color: #c3cfdf; font-size: 9pt; }
+QLabel#MemberOverviewHint { color: #9fb3c8; font-size: 8.8pt; }
 
 QListWidget#ActivityList {
     background: #0d1520;
-    border: 1px solid #151f31;
+    border: 1px solid rgba(255, 255, 255, 0.05);
     border-radius: 10px;
     padding: 6px;
-    color: #b3c1d6;
+    color: #a8b6cb;
+    font-size: 9pt;
 }
-QLabel#ActivityTitle { color: #9fb3c8; font-weight: 700; font-size: 9.5pt; }
+QLabel#ActivityTitle { color: #9fb3c8; font-weight: 700; font-size: 9pt; }
 
 QStatusBar {
     background: #0f1724;
     color: #c3cfdf;
-    border-top: 1px solid #1a2333;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
-QStatusBar QLabel { padding: 0 8px; font-size: 9.5pt; }
+QStatusBar QLabel { padding: 0 8px; font-size: 9.3pt; color: #b8c5d9; }
