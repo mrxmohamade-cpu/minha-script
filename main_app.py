@@ -782,6 +782,40 @@ class AnemApp(QMainWindow):
         main_controls_layout.addStretch()
         main_layout.addWidget(main_controls_frame)
 
+        # لوحة موجزة تعرض حالة العمليات الجارية وما سيتم لاحقًا
+        self.operation_panel_frame = QFrame(self)
+        self.operation_panel_frame.setObjectName("OperationPanel")
+        operation_panel_layout = QHBoxLayout(self.operation_panel_frame)
+        operation_panel_layout.setContentsMargins(10, 6, 10, 6)
+        operation_panel_layout.setSpacing(12)
+
+        self.operation_current_label = QLabel("حالة العمليات: التطبيق جاهز")
+        self.operation_current_label.setObjectName("OperationCurrentLabel")
+        self.operation_current_label.setToolTip("العملية أو الفحص الجاري الآن")
+
+        self.operation_next_label = QLabel("التالي: لا يوجد")
+        self.operation_next_label.setObjectName("OperationNextLabel")
+        self.operation_next_label.setToolTip("الخطوة أو الطلب التالي إن وجد")
+
+        self.operation_timer_label = QLabel("الزمن المتبقي: --")
+        self.operation_timer_label.setObjectName("OperationTimerLabel")
+        self.operation_timer_label.setToolTip("الوقت المتبقي قبل الحركة القادمة")
+
+        operation_panel_layout.addWidget(self.operation_current_label, 2)
+        operation_panel_layout.addWidget(self.operation_next_label, 2)
+        operation_panel_layout.addWidget(self.operation_timer_label, 1)
+        operation_panel_layout.addStretch()
+
+        self.operation_panel_frame.setStyleSheet(
+            """
+            QFrame#OperationPanel { background: #1b222c; border: 1px solid #2c3642; border-radius: 10px; }
+            QLabel#OperationCurrentLabel { color: #e9eef5; font-weight: 700; }
+            QLabel#OperationNextLabel, QLabel#OperationTimerLabel { color: #cfd8e3; }
+            """
+        )
+
+        main_layout.addWidget(self.operation_panel_frame)
+
 
         self.statusBar = QStatusBar()
         self.statusBar.setObjectName("MainStatusBar")
@@ -2092,6 +2126,45 @@ class AnemApp(QMainWindow):
         self._set_status_spinner_running(busy)
 
 
+    def _format_wait_time(self, seconds):
+        try:
+            seconds = int(seconds)
+        except (TypeError, ValueError):
+            return None
+        if seconds < 0:
+            seconds = 0
+        minutes, remaining_seconds = divmod(seconds, 60)
+        hours, remaining_minutes = divmod(minutes, 60)
+        if hours:
+            return f"{hours:02d}:{remaining_minutes:02d}:{remaining_seconds:02d}"
+        return f"{remaining_minutes:02d}:{remaining_seconds:02d}"
+
+
+    def _set_operation_panel(self, current_text=None, next_text=None, wait_seconds=None, level="info"):
+        if not hasattr(self, 'operation_current_label'):
+            return
+
+        color_map = {
+            "info": "#e9eef5",
+            "success": "#b5e48c",
+            "warning": "#f6c344",
+            "error": "#f28b82",
+        }
+        badge_color = color_map.get(level, "#e9eef5")
+
+        if current_text:
+            self.operation_current_label.setText(f"حالة العمليات: {current_text}")
+        if next_text:
+            self.operation_next_label.setText(f"التالي: {next_text}")
+        if wait_seconds is not None:
+            formatted = self._format_wait_time(wait_seconds)
+            self.operation_timer_label.setText(f"الزمن المتبقي: {formatted if formatted else '--'}")
+
+        self.operation_current_label.setStyleSheet(
+            f"QLabel#OperationCurrentLabel {{ color: {badge_color}; font-weight: 700; }}"
+        )
+
+
     def update_status_bar_message(self, message, is_general_message=True, member_obj=None, original_idx_if_member=None, level="info", busy=False, hint_text=None):
         final_message = message
         if member_obj and original_idx_if_member is not None and original_idx_if_member >= 0:
@@ -2108,6 +2181,12 @@ class AnemApp(QMainWindow):
         self._update_status_chip(level=level, label_text=chip_label)
         self._update_refresh_hint(hint_text, busy)
 
+        # إبراز الحالة التشغيلية في لوحة العمليات لتبسيط القراءة للمستخدم
+        if busy or hint_text:
+            self._set_operation_panel(current_text=final_message, next_text=hint_text, level=level)
+        elif is_general_message:
+            self._set_operation_panel(current_text=final_message, level=level)
+
         if hasattr(self, 'countdown_label') and self.countdown_label.text().strip() == "":
             self.countdown_label.setText("⏸️ لا يوجد عد تنازلي")
 
@@ -2119,10 +2198,12 @@ class AnemApp(QMainWindow):
                 self.countdown_label.setText(f"⏳ {display_text}")
                 self.countdown_label.setToolTip("الوقت المتبقي قبل تنفيذ الخطوة التالية")
                 self._update_refresh_hint(f"العد التنازلي: {display_text}", busy=True)
+                self._set_operation_panel(next_text="متابعة بعد اكتمال العد", level="info")
             else:
                 self.countdown_label.setText("⏸️ لا يوجد عد تنازلي")
                 self.countdown_label.setToolTip("لا يوجد انتظار حالي")
                 self._update_refresh_hint("لا يوجد تحديث نشط", busy=False)
+                self._set_operation_panel(wait_seconds=0, level="info")
 
 
     def start_monitoring(self):
@@ -2153,6 +2234,12 @@ class AnemApp(QMainWindow):
                 busy=True,
                 hint_text=f"المراقبة نشطة - الدورة كل {monitoring_interval_minutes} دقيقة"
             )
+            self._set_operation_panel(
+                current_text="المراقبة الدورية قيد التنفيذ",
+                next_text="الدورة القادمة حسب الإعداد",
+                wait_seconds=int(float(monitoring_interval_minutes) * 60),
+                level="info",
+            )
             self._show_toast(f"بدأت المراقبة (الدورة كل {monitoring_interval_minutes} دقيقة).", type="info", title="المراقبة")
         else:
             self._show_toast("المراقبة جارية بالفعل.", type="info", title="المراقبة")
@@ -2180,14 +2267,15 @@ class AnemApp(QMainWindow):
                 self.active_spinner_row_in_view = -1 
 
             if self.activation_successful and self.current_subscription_data and self.current_subscription_data.get("status","").upper() == "ACTIVE":
-                self._enable_app_functions() 
+                self._enable_app_functions()
             else:
-                self._disable_app_functions() 
-                self.stop_button.setEnabled(False) 
+                self._disable_app_functions()
+                self.stop_button.setEnabled(False)
 
             self.update_status_bar_message("تم إيقاف المراقبة بنجاح.", is_general_message=True, level="warning", busy=False, hint_text="المراقبة متوقفة")
+            self._set_operation_panel(current_text="المراقبة متوقفة", next_text="اضغط بدء للمراقبة", level="warning", wait_seconds=0)
             self._show_toast("تم إيقاف المراقبة.", type="info", title="المراقبة")
-            self.update_countdown_timer_display("") 
+            self.update_countdown_timer_display("")
             for i in range(len(self.members_list)):
                 if self.members_list[i].is_processing:
                     self.members_list[i].is_processing = False
