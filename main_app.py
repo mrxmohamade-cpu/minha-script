@@ -190,12 +190,14 @@ class AnemApp(QMainWindow):
 
 
         self.init_ui()
-        self.load_stylesheet() 
-        self.load_members_data() 
+        self.load_stylesheet()
+        self.load_members_data()
         QTimer.singleShot(0, self.apply_app_settings)
         
         if self.activation_successful:
             self._start_message_listener() # بدء مستمع الرسائل
+
+        self._refresh_subscription_badge()
 
         logger.info("AnemApp __init__: اكتملت التهيئة.")
 
@@ -213,6 +215,18 @@ class AnemApp(QMainWindow):
         self.activation_successful = self._perform_activation_check_logic()
         if not self.activation_successful:
             logger.info("AnemApp: _initialize_and_check_activation determined activation failed.")
+
+    def _recheck_activation_state(self):
+        """إعادة التحقق يدويًا من حالة الاشتراك وإظهار نتيجة واضحة للمستخدم."""
+        self.update_status_bar_message("إعادة التحقق من الاشتراك...", is_general_message=True)
+        success = self._perform_activation_check_logic()
+        self.activation_successful = success
+        self._refresh_subscription_badge()
+        if success:
+            self._show_toast("تمت إعادة التحقق بنجاح.", type="success", title="الاشتراك")
+            self.update_status_bar_message("الاشتراك نشط وتمت المزامنة.", is_general_message=True)
+        else:
+            self._show_toast("فشلت إعادة التحقق. يرجى التحقق من الاتصال أو إعادة إدخال الكود.", type="error", title="الاشتراك")
 
     def _perform_activation_check_logic(self):
         logger.info("AnemApp: بدء التحقق من تفعيل البرنامج...")
@@ -280,9 +294,10 @@ class AnemApp(QMainWindow):
             dialog_instance.show_status_message(message_from_service or "تم تفعيل البرنامج بنجاح!", is_success=True)
             QMessageBox.information(dialog_instance, "نجاح التفعيل", message_from_service or "تم تفعيل البرنامج بنجاح!")
 
+            self._refresh_subscription_badge()
             self.firebase_service.listen_to_activation_code_changes(self.activated_code_id, self._pass_subscription_update_to_signal)
-            dialog_instance.accept() 
-            return True 
+            dialog_instance.accept()
+            return True
         else:
             if server_code_data: self.current_subscription_data = server_code_data
             user_friendly_error = "فشل تفعيل الكود. يرجى المحاولة مرة أخرى."
@@ -505,17 +520,40 @@ class AnemApp(QMainWindow):
 
         if critical_error_occurred:
             final_critical_msg = critical_message if critical_message else "حدث خطأ في حالة الاشتراك يمنع استخدام البرنامج."
-            self._show_critical_subscription_error(final_critical_msg) 
-            self._clear_local_activation_and_state(f"Critical subscription issue: {final_critical_msg}") 
-            if not self.activation_dialog_open: 
+            self._show_critical_subscription_error(final_critical_msg)
+            self._clear_local_activation_and_state(f"Critical subscription issue: {final_critical_msg}")
+            if not self.activation_dialog_open:
                 logger.info("AnemApp: Attempting to re-show activation dialog due to critical subscription error.")
-                QTimer.singleShot(100, lambda: self._initialize_and_check_activation()) 
+                QTimer.singleShot(100, lambda: self._initialize_and_check_activation())
+
+        self._refresh_subscription_badge()
 
     def _show_critical_subscription_error(self, message):
         logger.critical(f"AnemApp: Critical subscription error: {message}")
-        if not self.activation_dialog_open: 
+        if not self.activation_dialog_open:
             QMessageBox.critical(self, "خطأ في الاشتراك", message + "\nسيتم تعطيل وظائف البرنامج.", QMessageBox.Ok)
-        self._disable_app_functions() 
+        self._disable_app_functions()
+
+    def _refresh_subscription_badge(self):
+        if not self.subscription_badge:
+            return
+        status = (self.current_subscription_data or {}).get("status", "UNKNOWN").upper()
+        label = self.current_subscription_data.get("activation_code") if self.current_subscription_data else None
+        status_map = {
+            "ACTIVE": ("الاشتراك: مفعل", "#1dd1a1"),
+            "PENDING": ("الاشتراك: قيد التفعيل", "#f2c94c"),
+            "EXPIRED": ("الاشتراك: منتهي", "#ff6b6b"),
+            "REVOKED": ("الاشتراك: ملغي", "#ff6b6b"),
+            "DEVICE_REMOVED": ("الجهاز غير مصرح", "#f28482"),
+        }
+        text, color = status_map.get(status, ("الاشتراك: غير معروف", "#74c0fc"))
+        if label:
+            text = f"{text} ({label})"
+        self.subscription_badge.setText(text)
+        self.subscription_badge.setStyleSheet(
+            f"QLabel#SubscriptionBadge {{ background: {color}22; color: {color}; padding: 6px 10px;"
+            f" border: 1px solid {color}; border-radius: 10px; font-weight: 700; }}"
+        )
 
     def _disable_app_functions(self):
         logger.info("AnemApp: Disabling application functions.")
@@ -699,6 +737,33 @@ class AnemApp(QMainWindow):
         main_layout = QVBoxLayout(central_widget)
         main_layout.setSpacing(10)
 
+        # رأس واضح مع حالة الاشتراك وأزرار إدارة التفعيل
+        header_frame = QFrame()
+        header_frame.setObjectName("HeaderFrame")
+        header_layout = QHBoxLayout(header_frame)
+        header_layout.setContentsMargins(12, 10, 12, 6)
+        header_layout.setSpacing(12)
+
+        title_label = QLabel("إدارة مواعيد منحة البطالة")
+        title_label.setObjectName("HeaderTitle")
+        header_layout.addWidget(title_label, 1)
+
+        self.subscription_badge = QLabel("الاشتراك: غير معروف")
+        self.subscription_badge.setObjectName("SubscriptionBadge")
+        header_layout.addWidget(self.subscription_badge)
+
+        self.subscription_manage_button = QPushButton("إدارة الاشتراك")
+        self.subscription_manage_button.setIcon(self.style().standardIcon(QStyle.SP_ComputerIcon))
+        self.subscription_manage_button.clicked.connect(self._show_subscription_details_dialog)
+        header_layout.addWidget(self.subscription_manage_button)
+
+        self.refresh_activation_button = QPushButton("إعادة التحقق")
+        self.refresh_activation_button.setIcon(self.style().standardIcon(QStyle.SP_BrowserReload))
+        self.refresh_activation_button.clicked.connect(self._recheck_activation_state)
+        header_layout.addWidget(self.refresh_activation_button)
+
+        main_layout.addWidget(header_frame)
+
         menubar = self.menuBar()
         file_menu = menubar.addMenu("ملف")
         self.settings_action = QAction(QIcon.fromTheme("preferences-system"), "الإعدادات...", self)
@@ -718,12 +783,15 @@ class AnemApp(QMainWindow):
 
         self.datetime_label = None
 
+        # عناصر الواجهة (سيتم إنشاؤها فعليًا في init_ui)
         self.search_filter_frame = None
         self.search_input = None
         self.filter_by_combo = None
         self.filter_value_combo = None
         self.clear_filter_button = None
 
+        self.subscription_badge = None
+        self.subscription_manage_button = None
 
         section_title_label = None
 
@@ -746,6 +814,78 @@ class AnemApp(QMainWindow):
         self.member_overview_last = None
         self.member_overview_hint = None
 
+
+        # شريط أدوات البحث والفلترة البسيط
+        self.search_filter_frame = QFrame()
+        self.search_filter_frame.setObjectName("FilterBar")
+        filter_layout = QHBoxLayout(self.search_filter_frame)
+        filter_layout.setContentsMargins(8, 4, 8, 4)
+        filter_layout.setSpacing(8)
+
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("بحث بالاسم، الهاتف، أو الرقم...")
+        self.search_input.textChanged.connect(self.apply_filter_and_search)
+        filter_layout.addWidget(self.search_input, 2)
+
+        self.filter_by_combo = QComboBox()
+        self.filter_by_combo.addItem("تصفية حسب...", None)
+        self.filter_by_combo.addItem("الحالة", "status")
+        self.filter_by_combo.addItem("حجز موعد", "has_rdv")
+        self.filter_by_combo.addItem("مستفيد", "have_allocation")
+        self.filter_by_combo.addItem("PDF التزام", "pdf_honneur")
+        self.filter_by_combo.addItem("PDF موعد", "pdf_rdv")
+        self.filter_by_combo.currentIndexChanged.connect(self.on_filter_by_changed)
+        filter_layout.addWidget(self.filter_by_combo)
+
+        self.filter_value_combo = QComboBox()
+        self.filter_value_combo.setVisible(False)
+        self.filter_value_combo.currentIndexChanged.connect(self.apply_filter_and_search)
+        filter_layout.addWidget(self.filter_value_combo)
+
+        self.clear_filter_button = QPushButton("مسح")
+        self.clear_filter_button.setIcon(self.style().standardIcon(QStyle.SP_DialogResetButton))
+        self.clear_filter_button.clicked.connect(self.clear_filter_and_search)
+        filter_layout.addWidget(self.clear_filter_button)
+
+        main_layout.addWidget(self.search_filter_frame)
+
+        # بطاقات إحصائية مختصرة لإبراز حالة الاشتراك والمراقبة
+        self.insight_frame = QFrame()
+        self.insight_frame.setObjectName("InsightFrame")
+        insight_layout = QHBoxLayout(self.insight_frame)
+        insight_layout.setContentsMargins(8, 4, 8, 4)
+        insight_layout.setSpacing(10)
+
+        self.stat_total_card = self._create_stat_card("عدد الأعضاء", "0", "إجمالي المسجلين", accent="#4dabf7")
+        self.stat_ready_card = self._create_stat_card("جاهز للحجز", "0", "أعضاء مؤهلون ولديهم تسجيل مسبق", accent="#7bd88f")
+        self.stat_monitor_card = self._create_stat_card("المراقبة", "--", "الحالة الحالية", accent="#f2c94c")
+
+        insight_layout.addWidget(self.stat_total_card)
+        insight_layout.addWidget(self.stat_ready_card)
+        insight_layout.addWidget(self.stat_monitor_card)
+
+        main_layout.addWidget(self.insight_frame)
+
+        # لوحة عمليات بسيطة لإظهار آخر إجراء وزمن الانتظار/التحميل
+        self.operation_panel_frame = QFrame()
+        self.operation_panel_frame.setObjectName("OperationPanel")
+        op_layout = QHBoxLayout(self.operation_panel_frame)
+        op_layout.setContentsMargins(10, 6, 10, 6)
+        op_layout.setSpacing(12)
+
+        self.operation_current_label = QLabel("لا توجد عملية جارية")
+        self.operation_current_label.setObjectName("OperationCurrent")
+        op_layout.addWidget(self.operation_current_label, 2)
+
+        self.operation_next_label = QLabel("--")
+        self.operation_next_label.setObjectName("OperationNext")
+        op_layout.addWidget(self.operation_next_label, 1)
+
+        self.operation_timer_label = QLabel("انتظار: --")
+        self.operation_timer_label.setObjectName("OperationTimer")
+        op_layout.addWidget(self.operation_timer_label)
+
+        main_layout.addWidget(self.operation_panel_frame)
 
         self.statusBar = QStatusBar()
         self.statusBar.setObjectName("MainStatusBar")
@@ -784,12 +924,12 @@ class AnemApp(QMainWindow):
         self.table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self.show_table_context_menu)
 
-        # إبقاء الواجهة بسيطة بإظهار الأعمدة الأساسية فقط
-        self.table.setColumnHidden(self.COL_ICON, True)
-        self.table.setColumnHidden(self.COL_NIN, True)
+        # إظهار الأعمدة الأساسية مع إبراز الأيقونات والهاتف لسهولة المتابعة
+        self.table.setColumnHidden(self.COL_ICON, False)
+        self.table.setColumnHidden(self.COL_NIN, False)
         self.table.setColumnHidden(self.COL_WASSIT, True)
         self.table.setColumnHidden(self.COL_CCP, True)
-        self.table.setColumnHidden(self.COL_PHONE_NUMBER, True)
+        self.table.setColumnHidden(self.COL_PHONE_NUMBER, False)
 
         header.setSectionResizeMode(self.COL_FULL_NAME_AR, QHeaderView.Stretch)
         header.setSectionResizeMode(self.COL_STATUS, QHeaderView.ResizeToContents)
@@ -802,7 +942,49 @@ class AnemApp(QMainWindow):
         self.table.itemDoubleClicked.connect(self.edit_member_details)
         self.table.verticalHeader().setVisible(True)
         self.table.itemSelectionChanged.connect(self._refresh_member_overview_from_selection)
-        main_layout.addWidget(self.table)
+
+        # لوحة جانبية خفيفة لإبراز العضو المحدد وسجل النشاط
+        self.member_overview_frame = QFrame()
+        self.member_overview_frame.setObjectName("MemberOverview")
+        overview_layout = QVBoxLayout(self.member_overview_frame)
+        overview_layout.setContentsMargins(8, 8, 8, 8)
+        overview_layout.setSpacing(6)
+
+        self.member_overview_title = QLabel("لا يوجد عضو محدد")
+        self.member_overview_title.setObjectName("MemberOverviewTitle")
+        overview_layout.addWidget(self.member_overview_title)
+
+        self.member_overview_state = QLabel("—")
+        self.member_overview_state.setObjectName("MemberOverviewState")
+        overview_layout.addWidget(self.member_overview_state)
+
+        self.member_overview_next = QLabel("الخطوة التالية: —")
+        self.member_overview_next.setObjectName("MemberOverviewNext")
+        overview_layout.addWidget(self.member_overview_next)
+
+        self.member_overview_wait = QLabel("الانتظار/التحميل: —")
+        self.member_overview_wait.setObjectName("MemberOverviewWait")
+        overview_layout.addWidget(self.member_overview_wait)
+
+        self.member_overview_last = QLabel("آخر تحديث: —")
+        self.member_overview_last.setObjectName("MemberOverviewLast")
+        overview_layout.addWidget(self.member_overview_last)
+
+        self.member_overview_hint = QLabel("حدد عضوًا لعرض تفاصيله.")
+        self.member_overview_hint.setObjectName("MemberOverviewHint")
+        overview_layout.addWidget(self.member_overview_hint)
+
+        overview_layout.addStretch()
+
+        self.activity_list = QListWidget()
+        self.activity_list.setObjectName("ActivityList")
+        overview_layout.addWidget(self.activity_list, 2)
+
+        content_layout = QHBoxLayout()
+        content_layout.setSpacing(10)
+        content_layout.addWidget(self.table, 3)
+        content_layout.addWidget(self.member_overview_frame, 1)
+        main_layout.addLayout(content_layout)
 
 
         bottom_controls_layout = QHBoxLayout()
@@ -2364,7 +2546,7 @@ class AnemApp(QMainWindow):
             self.operation_timer_label.setText(f"الزمن المتبقي: {formatted if formatted else '--'}")
 
         self.operation_current_label.setStyleSheet(
-            f"QLabel#OperationCurrentLabel {{ color: {badge_color}; font-weight: 700; }}"
+            f"QLabel#OperationCurrent {{ color: {badge_color}; font-weight: 700; }}"
         )
 
 
