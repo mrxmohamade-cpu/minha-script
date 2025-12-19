@@ -166,6 +166,7 @@ class AnemApp(QMainWindow):
         self.spinner_char_idx = 0
         self.spinner_chars = ['◐', '◓', '◑', '◒']
         self.latest_countdown_text = "لا يوجد انتظار حالي"
+        self.activity_feed = []  # يحتفظ بآخر الرسائل لعرضها للمستخدم
 
         # عناصر شريط الحالة المحسّنة
         self.status_spinner_idx = 0
@@ -188,7 +189,7 @@ class AnemApp(QMainWindow):
         self.new_app_messages_signal.connect(self._handle_incoming_app_messages_on_main_thread) # ربط الإشارة الجديدة
 
 
-        self.init_ui() 
+        self.init_ui()
         self.load_stylesheet() 
         self.load_members_data() 
         QTimer.singleShot(0, self.apply_app_settings)
@@ -823,6 +824,45 @@ class AnemApp(QMainWindow):
 
         main_layout.addWidget(self.operation_panel_frame)
 
+        # شريط إحصائيات سريع ولوحة نشاط حديث لزيادة الوضوح
+        self.insight_frame = QFrame(self)
+        self.insight_frame.setObjectName("InsightFrame")
+        insight_layout = QHBoxLayout(self.insight_frame)
+        insight_layout.setContentsMargins(10, 8, 10, 8)
+        insight_layout.setSpacing(12)
+
+        # بطاقات إحصائية: إجمالي الأعضاء، الجاهزون للحجز، المراقبة النشطة
+        self.stat_total_card = self._create_stat_card("إجمالي الأعضاء", "--", "كل الأعضاء المسجلين", accent="#4dabf7")
+        self.stat_ready_card = self._create_stat_card("جاهز لحجز الموعد", "--", "أعضاء مؤهلون وبدون موعد", accent="#70e0a3")
+        self.stat_monitor_card = self._create_stat_card("حالة المراقبة", "موقوف", "الحالة العامة للمتابعة", accent="#f2c94c")
+
+        insight_layout.addWidget(self.stat_total_card)
+        insight_layout.addWidget(self.stat_ready_card)
+        insight_layout.addWidget(self.stat_monitor_card)
+
+        # قائمة نشاط مختصرة تعرض آخر الرسائل والحركات
+        self.activity_list = QListWidget(self)
+        self.activity_list.setObjectName("ActivityList")
+        self.activity_list.setMinimumHeight(110)
+        self.activity_list.setMaximumHeight(160)
+        self.activity_list.setSpacing(3)
+        self.activity_list.setAlternatingRowColors(True)
+        self.activity_list.setSelectionMode(QAbstractItemView.NoSelection)
+        self.activity_list.setFocusPolicy(Qt.NoFocus)
+        insight_layout.addWidget(self.activity_list, 2)
+
+        self.insight_frame.setStyleSheet(
+            """
+            QFrame#InsightFrame { background: #0d1117; border: 1px solid #243447; border-radius: 10px; }
+            QListWidget#ActivityList { background: #0c0f14; color: #e6edf3; border: 1px solid #1f2a36; border-radius: 8px; }
+            QListWidget#ActivityList::item { padding: 6px; }
+            QListWidget#ActivityList::item:nth-child(odd) { background: #111821; }
+            QListWidget#ActivityList::item:selected { background: #1f2a36; }
+            """
+        )
+
+        main_layout.addWidget(self.insight_frame)
+
         # لوحة نظرة سريعة على العضو المحدد/النشط
         self.member_overview_frame = QFrame(self)
         self.member_overview_frame.setObjectName("MemberOverview")
@@ -1008,13 +1048,66 @@ class AnemApp(QMainWindow):
            (self.current_subscription_data and self.current_subscription_data.get("status", "").upper() != "ACTIVE"):
             self._disable_app_functions()
         else:
-            self._enable_app_functions() 
+            self._enable_app_functions()
 
         self.update_status_bar_message("التطبيق جاهز.", is_general_message=True)
+        self._update_insight_metrics()
 
     def toggle_search_filter_bar(self, checked):
         self.search_filter_frame.setVisible(checked)
-        self.toggle_search_filter_action.setChecked(checked) 
+        self.toggle_search_filter_action.setChecked(checked)
+
+    def _create_stat_card(self, title, value, subtitle, accent="#4dabf7"):
+        card = QFrame(self)
+        card.setObjectName("StatCard")
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(4)
+
+        title_label = QLabel(title)
+        title_label.setObjectName("StatCardTitle")
+        value_label = QLabel(value)
+        value_label.setObjectName("StatCardValue")
+        subtitle_label = QLabel(subtitle)
+        subtitle_label.setObjectName("StatCardSubtitle")
+        subtitle_label.setWordWrap(True)
+
+        layout.addWidget(title_label)
+        layout.addWidget(value_label)
+        layout.addWidget(subtitle_label)
+
+        card.value_label = value_label
+        card.setStyleSheet(
+            f"""
+            QFrame#StatCard {{ background: #0c0f14; border: 1px solid #1f2a36; border-radius: 10px; }}
+            QLabel#StatCardTitle {{ color: #e6edf3; font-weight: 600; }}
+            QLabel#StatCardValue {{ color: {accent}; font-weight: 800; font-size: 18px; }}
+            QLabel#StatCardSubtitle {{ color: #9aa6b4; }}
+            """
+        )
+        return card
+
+    def _append_activity_entry(self, message, level="info"):
+        """إضافة رسالة إلى لوحة النشاط مع تمييز اللون بحسب مستوى الرسالة."""
+        if not hasattr(self, "activity_list"):
+            return
+        max_items = 12
+        prefix = {"info": "ℹ️", "warn": "⚠️", "error": "❌"}.get(level, "ℹ️")
+        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+        item = QListWidgetItem(f"{prefix} {timestamp} — {message}")
+        if level == "error":
+            item.setForeground(QColor("#ff6b6b"))
+        elif level == "warn":
+            item.setForeground(QColor("#f2c94c"))
+        else:
+            item.setForeground(QColor("#a5d8ff"))
+        self.activity_feed.append(item)
+        if len(self.activity_feed) > max_items:
+            self.activity_feed.pop(0)
+        self.activity_list.clear()
+        for entry in self.activity_feed:
+            self.activity_list.addItem(entry.clone())
+        self.activity_list.scrollToBottom()
 
     def on_filter_by_changed(self, index):
         filter_key = self.filter_by_combo.itemData(index)
@@ -1036,9 +1129,31 @@ class AnemApp(QMainWindow):
 
     def clear_filter_and_search(self):
         self.search_input.clear()
-        self.filter_by_combo.setCurrentIndex(0) 
+        self.filter_by_combo.setCurrentIndex(0)
         self._show_toast("تم مسح الفلتر بنجاح.", type="info", title="فلتر")
         self.update_status_bar_message("تم مسح الفلتر.", is_general_message=True)
+
+    def _update_insight_metrics(self):
+        """تحديث البطاقات الإحصائية لتعكس حالة الأعضاء والمتابعة."""
+        total_members = len(self.members_list)
+        ready_for_rdv = 0
+        for member in self.members_list:
+            if member.have_allocation:
+                continue
+            if member.already_has_rdv or member.rdv_date:
+                continue
+            if member.has_actual_pre_inscription or member.pre_inscription_id:
+                ready_for_rdv += 1
+
+        monitor_state = "نشط" if self.monitoring_thread.isRunning() else "موقوف"
+        monitor_detail = "المراقبة الدورية تعمل" if monitor_state == "نشط" else "المراقبة متوقفة"
+
+        self.stat_total_card.value_label.setText(str(total_members))
+        self.stat_ready_card.value_label.setText(str(ready_for_rdv))
+        self.stat_monitor_card.value_label.setText(monitor_state)
+        subtitle_label = self.stat_monitor_card.findChild(QLabel, "StatCardSubtitle")
+        if subtitle_label:
+            subtitle_label.setText(monitor_detail)
 
 
     def apply_filter_and_search(self):
@@ -2182,6 +2297,7 @@ class AnemApp(QMainWindow):
         if not self.is_filter_active:
             self.save_members_data()
         self._ensure_table_selection_after_refresh()
+        self._update_insight_metrics()
 
     def update_table_row(self, row_in_table, member):
         item_icon = QTableWidgetItem()
@@ -2302,9 +2418,12 @@ class AnemApp(QMainWindow):
                 last_msg=member.full_last_activity_detail or member.last_activity_detail,
             )
 
-        msg_attr_prefix = f"_toast_shown_{original_member_index}_" 
-        if not self.suppress_initial_messages: 
-            current_status_for_toast = status_text 
+        # تحديث الإحصاءات السريعة فور تغير حالة العضو
+        self._update_insight_metrics()
+
+        msg_attr_prefix = f"_toast_shown_{original_member_index}_"
+        if not self.suppress_initial_messages:
+            current_status_for_toast = status_text
             toast_title_for_member = self._get_member_display_name_with_index(member, original_member_index)
 
             if "فشل" in current_status_for_toast or "خطأ" in current_status_for_toast or "غير مؤهل" in current_status_for_toast:
@@ -2456,6 +2575,13 @@ class AnemApp(QMainWindow):
         self._update_status_chip(level=level, label_text=chip_label)
         self._update_refresh_hint(hint_text, busy)
 
+        level_for_feed = "info"
+        if level in ("warning", "warn"):
+            level_for_feed = "warn"
+        elif level in ("error", "critical"):
+            level_for_feed = "error"
+        self._append_activity_entry(final_message, level=level_for_feed)
+
         # إبراز الحالة التشغيلية في لوحة العمليات لتبسيط القراءة للمستخدم
         if busy or hint_text:
             self._set_operation_panel(current_text=final_message, next_text=hint_text, level=level)
@@ -2522,6 +2648,7 @@ class AnemApp(QMainWindow):
                 level="info",
             )
             self._show_toast(f"بدأت المراقبة (الدورة كل {monitoring_interval_minutes} دقيقة).", type="info", title="المراقبة")
+            self._update_insight_metrics()
         else:
             self._show_toast("المراقبة جارية بالفعل.", type="info", title="المراقبة")
             self.update_status_bar_message("المراقبة جارية بالفعل.", is_general_message=True, hint_text="المراقبة تعمل")
@@ -2561,6 +2688,7 @@ class AnemApp(QMainWindow):
                 if self.members_list[i].is_processing:
                     self.members_list[i].is_processing = False
                     self.update_member_gui_in_table(i, self.members_list[i].status, self.members_list[i].last_activity_detail, get_icon_name_for_status(self.members_list[i].status))
+            self._update_insight_metrics()
         else:
             self._show_toast("المراقبة ليست جارية حاليًا.", type="info", title="المراقبة")
             self.update_status_bar_message("المراقبة ليست جارية.", is_general_message=True, hint_text="لا يوجد عمل مجدول")
