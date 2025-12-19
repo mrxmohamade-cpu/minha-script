@@ -132,7 +132,7 @@ class AnemApp(QMainWindow):
         if not self.activation_successful:
             logger.critical("AnemApp __init__: فشل تفعيل البرنامج. لن يتم إكمال تهيئة واجهة المستخدم.")
             return
-        self._should_initialize_ui = True 
+        self._should_initialize_ui = True
 
         load_custom_fonts()
         QApplication.setLayoutDirection(Qt.RightToLeft)
@@ -150,6 +150,7 @@ class AnemApp(QMainWindow):
         self.members_list = []
         self.filtered_members_list = []
         self.is_filter_active = False
+        self.last_added_member_index = None
 
         self.api_client = AnemAPIClient(
             initial_backoff_general=self.settings.get(SETTING_BACKOFF_GENERAL, DEFAULT_SETTINGS[SETTING_BACKOFF_GENERAL]),
@@ -519,8 +520,10 @@ class AnemApp(QMainWindow):
         self.stop_button.setEnabled(False)
         self.add_member_button.setEnabled(False)
         self.remove_member_button.setEnabled(False)
+        if hasattr(self, 'check_now_button'):
+            self.check_now_button.setEnabled(False)
         if hasattr(self, 'settings_action'): self.settings_action.setEnabled(False)
-        if self.monitoring_thread.isRunning(): 
+        if self.monitoring_thread.isRunning():
             self.stop_monitoring()
 
     def _enable_app_functions(self):
@@ -528,6 +531,8 @@ class AnemApp(QMainWindow):
         self.start_button.setEnabled(True)
         self.add_member_button.setEnabled(True)
         self.remove_member_button.setEnabled(True)
+        if hasattr(self, 'check_now_button'):
+            self.check_now_button.setEnabled(True)
         if hasattr(self, 'settings_action'): self.settings_action.setEnabled(True)
 
     def _start_message_listener(self):
@@ -924,6 +929,13 @@ class AnemApp(QMainWindow):
         self.remove_member_button.setIcon(self.style().standardIcon(QStyle.SP_TrashIcon))
         self.remove_member_button.clicked.connect(self.remove_member)
         bottom_controls_layout.addWidget(self.remove_member_button)
+
+        self.check_now_button = QPushButton("فحص العضو المحدد", self)
+        self.check_now_button.setObjectName("check_now_button")
+        self.check_now_button.setIcon(self.style().standardIcon(QStyle.SP_BrowserReload))
+        self.check_now_button.clicked.connect(self.trigger_manual_check_for_selected)
+        bottom_controls_layout.addWidget(self.check_now_button)
+
         bottom_controls_layout.addStretch()
         self.start_button = QPushButton("بدء المراقبة", self)
         self.start_button.setObjectName("start_button")
@@ -1131,6 +1143,61 @@ class AnemApp(QMainWindow):
         else:
             logger.warning(f"check_member_now: فهرس خاطئ {original_member_index}")
             self._show_toast("خطأ في بدء الفحص الفوري (فهرس غير صالح).", type="error", title="خطأ")
+
+    def _select_row_by_member_index(self, original_member_index, ensure_visible=False):
+        if not (0 <= original_member_index < len(self.members_list)):
+            return -1
+
+        member_obj = self.members_list[original_member_index]
+        current_list_for_view = self.filtered_members_list if self.is_filter_active else self.members_list
+        if member_obj not in current_list_for_view:
+            return -1
+
+        row_in_table = current_list_for_view.index(member_obj)
+        self.table.selectRow(row_in_table)
+        if ensure_visible:
+            target_item = self.table.item(row_in_table, self.COL_FULL_NAME_AR) or self.table.item(row_in_table, self.COL_ICON)
+            if target_item:
+                self.table.scrollToItem(target_item, QAbstractItemView.PositionAtCenter)
+        return row_in_table
+
+    def _resolve_member_index_for_check(self):
+        selected_index = None
+        selection_model = self.table.selectionModel()
+        if selection_model:
+            selected_rows = selection_model.selectedRows()
+            if selected_rows:
+                row = selected_rows[0].row()
+                current_list_for_view = self.filtered_members_list if self.is_filter_active else self.members_list
+                if 0 <= row < len(current_list_for_view):
+                    member_from_view = current_list_for_view[row]
+                    try:
+                        selected_index = self.members_list.index(member_from_view)
+                    except ValueError:
+                        logger.error("فشل العثور على العضو المحدد في القائمة الرئيسية أثناء تجهيز الفحص الفوري عبر الزر.")
+
+        if selected_index is not None:
+            return selected_index
+
+        if self.last_added_member_index is not None and 0 <= self.last_added_member_index < len(self.members_list):
+            return self.last_added_member_index
+
+        return None
+
+    def trigger_manual_check_for_selected(self):
+        target_index = self._resolve_member_index_for_check()
+        if target_index is None:
+            self._show_toast("يرجى اختيار عضو لفحصه أو إضافة عضو جديد أولًا.", type="warning", title="فحص فوري")
+            self.update_status_bar_message(
+                "لم يتم العثور على عضو محدد لإجراء الفحص.",
+                is_general_message=True,
+                hint_text="حدد عضو من الجدول ثم اضغط فحص",
+                busy=False,
+            )
+            return
+
+        self._select_row_by_member_index(target_index, ensure_visible=True)
+        self.check_member_now(target_index)
 
     def download_all_member_pdfs(self, original_member_index):
         if not self.activation_successful or (self.current_subscription_data and self.current_subscription_data.get("status","").upper() != "ACTIVE"):
@@ -1689,12 +1756,14 @@ class AnemApp(QMainWindow):
             member = Member(data["nin"], data["wassit_no"], data["ccp"], data["phone_number"])
             self.members_list.append(member)
 
-            if self.is_filter_active: 
+            if self.is_filter_active:
                 self.apply_filter_and_search()
-            else: 
+            else:
                 self.update_table()
 
-            current_original_index = self.members_list.index(member) 
+            current_original_index = self.members_list.index(member)
+            self.last_added_member_index = current_original_index
+            self._select_row_by_member_index(current_original_index, ensure_visible=True)
             member_display_name_add = self._get_member_display_name_with_index(member, current_original_index)
             logger.info(f"تمت إضافة العضو: {member_display_name_add}, Phone={data['phone_number']}")
             self.update_status_bar_message(f"تمت إضافة العضو: {member_display_name_add}. جاري جلب المعلومات الأولية...", is_general_message=False)
@@ -1893,10 +1962,16 @@ class AnemApp(QMainWindow):
             else:
                 logger.warning(f"محاولة حذف عضو {member_to_delete.nin} غير موجود في القائمة الرئيسية.")
 
-        if self.is_filter_active: 
+        if self.is_filter_active:
             self.apply_filter_and_search()
-        else: 
+        else:
             self.update_table()
+
+        if self.members_list:
+            if self.last_added_member_index is not None and self.last_added_member_index >= len(self.members_list):
+                self.last_added_member_index = len(self.members_list) - 1
+        else:
+            self.last_added_member_index = None
 
         if deleted_count > 0:
             self.update_status_bar_message(f"تم حذف {deleted_count} عضو/أعضاء.", is_general_message=True)
@@ -2332,13 +2407,14 @@ class AnemApp(QMainWindow):
                 self.update_status_bar_message(f"خطأ غير متوقع عند تحميل البيانات الاحتياطية: {e}", is_general_message=True)
                 self._show_toast(f"خطأ غير متوقع عند تحميل البيانات الاحتياطية: {e}", type="error", duration=6000, title="خطأ بيانات")
 
-        if not loaded_successfully: 
+        if not loaded_successfully:
             self.members_list = []
             logger.info(f"لم يتم العثور على ملف البيانات ({primary_path}) أو الملف الاحتياطي ({backup_path})، أو كلاهما تالف. سيبدأ البرنامج بقائمة فارغة.")
             self.update_status_bar_message(f"ملف البيانات غير موجود أو تالف. يمكنك إضافة أعضاء جدد.", is_general_message=True)
 
-        self.filtered_members_list = list(self.members_list) 
-        self.update_table() 
+        self.last_added_member_index = (len(self.members_list) - 1) if self.members_list else None
+        self.filtered_members_list = list(self.members_list)
+        self.update_table()
 
         QTimer.singleShot(200, lambda: setattr(self, 'suppress_initial_messages', False))
 
