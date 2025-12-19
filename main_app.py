@@ -731,59 +731,15 @@ class AnemApp(QMainWindow):
             self._update_messages_button_status_bar()
 
 
+
     def init_ui(self):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
-        main_layout.setSpacing(10)
+        main_layout.setContentsMargins(12, 12, 12, 12)
+        main_layout.setSpacing(12)
 
-        # رأس واضح مع حالة الاشتراك وأزرار إدارة التفعيل
-        header_frame = QFrame()
-        header_frame.setObjectName("HeaderFrame")
-        header_layout = QHBoxLayout(header_frame)
-        header_layout.setContentsMargins(12, 10, 12, 6)
-        header_layout.setSpacing(12)
-
-        title_label = QLabel("إدارة مواعيد منحة البطالة")
-        title_label.setObjectName("HeaderTitle")
-        header_layout.addWidget(title_label, 1)
-
-        self.subscription_badge = QLabel("الاشتراك: غير معروف")
-        self.subscription_badge.setObjectName("SubscriptionBadge")
-        header_layout.addWidget(self.subscription_badge)
-
-        self.subscription_manage_button = QPushButton("إدارة الاشتراك")
-        self.subscription_manage_button.setIcon(self.style().standardIcon(QStyle.SP_ComputerIcon))
-        self.subscription_manage_button.clicked.connect(self._show_subscription_details_dialog)
-        header_layout.addWidget(self.subscription_manage_button)
-
-        self.refresh_activation_button = QPushButton("إعادة التحقق")
-        self.refresh_activation_button.setIcon(self.style().standardIcon(QStyle.SP_BrowserReload))
-        self.refresh_activation_button.clicked.connect(self._recheck_activation_state)
-        header_layout.addWidget(self.refresh_activation_button)
-
-        main_layout.addWidget(header_frame)
-
-        menubar = self.menuBar()
-        file_menu = menubar.addMenu("ملف")
-        self.settings_action = QAction(QIcon.fromTheme("preferences-system"), "الإعدادات...", self)
-        self.settings_action.triggered.connect(self.open_settings_dialog)
-        file_menu.addAction(self.settings_action)
-
-        # واجهة مبسطة بدون قوائم أدوات إضافية
-        self.toggle_search_filter_action = None
-        self.toggle_details_action = None
-        self.messages_action_menu = None
-
-
-        file_menu.addSeparator()
-        exit_action = QAction(QIcon.fromTheme("application-exit"), "خروج", self)
-        exit_action.triggered.connect(self.close)
-        file_menu.addAction(exit_action)
-
-        self.datetime_label = None
-
-        # عناصر الواجهة (سيتم إنشاؤها فعليًا في init_ui)
+        # عناصر الواجهة (تصريحات أولية)
         self.search_filter_frame = None
         self.search_input = None
         self.filter_by_combo = None
@@ -792,8 +748,7 @@ class AnemApp(QMainWindow):
 
         self.subscription_badge = None
         self.subscription_manage_button = None
-
-        section_title_label = None
+        self.refresh_activation_button = None
 
         self.operation_panel_frame = None
         self.operation_current_label = None
@@ -814,20 +769,76 @@ class AnemApp(QMainWindow):
         self.member_overview_last = None
         self.member_overview_hint = None
 
+        menubar = self.menuBar()
+        file_menu = menubar.addMenu("ملف")
+        self.settings_action = QAction(QIcon.fromTheme("preferences-system"), "الإعدادات...", self)
+        self.settings_action.triggered.connect(self.open_settings_dialog)
+        file_menu.addAction(self.settings_action)
 
-        # شريط أدوات البحث والفلترة البسيط
+        # واجهة مبسطة بدون قوائم أدوات إضافية
+        self.toggle_search_filter_action = None
+        self.toggle_details_action = None
+        self.messages_action_menu = None
+
+        file_menu.addSeparator()
+        exit_action = QAction(QIcon.fromTheme("application-exit"), "خروج", self)
+        exit_action.triggered.connect(self.close)
+        file_menu.addAction(exit_action)
+
+        # رأس منظم مع شارة اشتراك وإجراءات واضحة
+        header_frame = QFrame()
+        header_frame.setObjectName("HeaderFrame")
+        header_layout = QHBoxLayout(header_frame)
+        header_layout.setContentsMargins(14, 12, 14, 10)
+        header_layout.setSpacing(16)
+
+        title_column = QVBoxLayout()
+        title_column.setSpacing(2)
+        title_label = QLabel("إدارة مواعيد منحة البطالة")
+        title_label.setObjectName("HeaderTitle")
+        subtitle_label = QLabel("متابعة الأعضاء والحجوزات برسائل واضحة")
+        subtitle_label.setObjectName("HeaderSubtitle")
+        title_column.addWidget(title_label)
+        title_column.addWidget(subtitle_label)
+        header_layout.addLayout(title_column, 2)
+
+        badge_container = QHBoxLayout()
+        badge_container.setSpacing(8)
+
+        self.subscription_badge = QLabel("الاشتراك: غير معروف")
+        self.subscription_badge.setObjectName("SubscriptionBadge")
+        badge_container.addWidget(self.subscription_badge)
+
+        self.subscription_manage_button = QPushButton("إدارة الاشتراك")
+        self.subscription_manage_button.setObjectName("SubscriptionManageButton")
+        self.subscription_manage_button.setIcon(self.style().standardIcon(QStyle.SP_ComputerIcon))
+        self.subscription_manage_button.clicked.connect(self._show_subscription_details_dialog)
+        badge_container.addWidget(self.subscription_manage_button)
+
+        self.refresh_activation_button = QPushButton("إعادة التحقق")
+        self.refresh_activation_button.setObjectName("SubscriptionRefreshButton")
+        self.refresh_activation_button.setIcon(self.style().standardIcon(QStyle.SP_BrowserReload))
+        self.refresh_activation_button.clicked.connect(self._recheck_activation_state)
+        badge_container.addWidget(self.refresh_activation_button)
+
+        header_layout.addLayout(badge_container, 1)
+        main_layout.addWidget(header_frame)
+
+        # شريط أدوات البحث والفلترة
         self.search_filter_frame = QFrame()
         self.search_filter_frame.setObjectName("FilterBar")
         filter_layout = QHBoxLayout(self.search_filter_frame)
-        filter_layout.setContentsMargins(8, 4, 8, 4)
-        filter_layout.setSpacing(8)
+        filter_layout.setContentsMargins(10, 6, 10, 6)
+        filter_layout.setSpacing(10)
 
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("بحث بالاسم، الهاتف، أو الرقم...")
         self.search_input.textChanged.connect(self.apply_filter_and_search)
+        self.search_input.setClearButtonEnabled(True)
         filter_layout.addWidget(self.search_input, 2)
 
         self.filter_by_combo = QComboBox()
+        self.filter_by_combo.setObjectName("FilterCombo")
         self.filter_by_combo.addItem("تصفية حسب...", None)
         self.filter_by_combo.addItem("الحالة", "status")
         self.filter_by_combo.addItem("حجز موعد", "has_rdv")
@@ -838,55 +849,59 @@ class AnemApp(QMainWindow):
         filter_layout.addWidget(self.filter_by_combo)
 
         self.filter_value_combo = QComboBox()
+        self.filter_value_combo.setObjectName("FilterValueCombo")
         self.filter_value_combo.setVisible(False)
         self.filter_value_combo.currentIndexChanged.connect(self.apply_filter_and_search)
         filter_layout.addWidget(self.filter_value_combo)
 
         self.clear_filter_button = QPushButton("مسح")
+        self.clear_filter_button.setObjectName("ClearFilterButton")
         self.clear_filter_button.setIcon(self.style().standardIcon(QStyle.SP_DialogResetButton))
         self.clear_filter_button.clicked.connect(self.clear_filter_and_search)
         filter_layout.addWidget(self.clear_filter_button)
 
         main_layout.addWidget(self.search_filter_frame)
 
-        # بطاقات إحصائية مختصرة لإبراز حالة الاشتراك والمراقبة
+        # صف إحصائيات ولوحة عمليات منظمة
+        info_row = QHBoxLayout()
+        info_row.setSpacing(10)
+
         self.insight_frame = QFrame()
         self.insight_frame.setObjectName("InsightFrame")
         insight_layout = QHBoxLayout(self.insight_frame)
-        insight_layout.setContentsMargins(8, 4, 8, 4)
+        insight_layout.setContentsMargins(10, 6, 10, 6)
         insight_layout.setSpacing(10)
 
-        self.stat_total_card = self._create_stat_card("عدد الأعضاء", "0", "إجمالي المسجلين", accent="#4dabf7")
-        self.stat_ready_card = self._create_stat_card("جاهز للحجز", "0", "أعضاء مؤهلون ولديهم تسجيل مسبق", accent="#7bd88f")
-        self.stat_monitor_card = self._create_stat_card("المراقبة", "--", "الحالة الحالية", accent="#f2c94c")
+        self.stat_total_card = self._create_stat_card("عدد الأعضاء", "0", "إجمالي المسجلين", accent="#38bdf8")
+        self.stat_ready_card = self._create_stat_card("جاهز للحجز", "0", "أعضاء مؤهلون ولديهم تسجيل مسبق", accent="#34d399")
+        self.stat_monitor_card = self._create_stat_card("المراقبة", "--", "الحالة الحالية", accent="#fbbf24")
 
         insight_layout.addWidget(self.stat_total_card)
         insight_layout.addWidget(self.stat_ready_card)
         insight_layout.addWidget(self.stat_monitor_card)
 
-        main_layout.addWidget(self.insight_frame)
-
-        # لوحة عمليات بسيطة لإظهار آخر إجراء وزمن الانتظار/التحميل
         self.operation_panel_frame = QFrame()
         self.operation_panel_frame.setObjectName("OperationPanel")
-        op_layout = QHBoxLayout(self.operation_panel_frame)
-        op_layout.setContentsMargins(10, 6, 10, 6)
-        op_layout.setSpacing(12)
+        op_layout = QVBoxLayout(self.operation_panel_frame)
+        op_layout.setContentsMargins(12, 10, 12, 10)
+        op_layout.setSpacing(6)
 
         self.operation_current_label = QLabel("لا توجد عملية جارية")
         self.operation_current_label.setObjectName("OperationCurrent")
-        op_layout.addWidget(self.operation_current_label, 2)
-
-        self.operation_next_label = QLabel("--")
+        self.operation_next_label = QLabel("الخطوة التالية: --")
         self.operation_next_label.setObjectName("OperationNext")
-        op_layout.addWidget(self.operation_next_label, 1)
-
-        self.operation_timer_label = QLabel("انتظار: --")
+        self.operation_timer_label = QLabel("الانتظار: --")
         self.operation_timer_label.setObjectName("OperationTimer")
+
+        op_layout.addWidget(self.operation_current_label)
+        op_layout.addWidget(self.operation_next_label)
         op_layout.addWidget(self.operation_timer_label)
 
-        main_layout.addWidget(self.operation_panel_frame)
+        info_row.addWidget(self.insight_frame, 2)
+        info_row.addWidget(self.operation_panel_frame, 1)
+        main_layout.addLayout(info_row)
 
+        # شريط الحالة المبسط أسفل النافذة
         self.statusBar = QStatusBar()
         self.statusBar.setObjectName("MainStatusBar")
         self.setStatusBar(self.statusBar)
@@ -899,18 +914,18 @@ class AnemApp(QMainWindow):
         self.last_scan_label.setObjectName("LastEventLabel")
 
         status_layout = QHBoxLayout()
-        status_layout.setContentsMargins(8, 2, 8, 2)
-        status_layout.setSpacing(10)
+        status_layout.setContentsMargins(10, 2, 10, 2)
+        status_layout.setSpacing(12)
         status_container = QWidget()
         status_container.setLayout(status_layout)
 
-        status_layout.addWidget(self.status_bar_label, 1)
-        status_layout.addWidget(self.countdown_label)
-        status_layout.addWidget(self.last_scan_label)
+        status_layout.addWidget(self.status_bar_label, 2)
+        status_layout.addWidget(self.countdown_label, 1)
+        status_layout.addWidget(self.last_scan_label, 1)
 
         self.statusBar.addPermanentWidget(status_container, 1)
 
-
+        # المنطقة الرئيسية: الجدول مع لوحة العضو والنشاط
         self.table = QTableWidget(self)
         self.table.setColumnCount(self.COL_DETAILS + 1)
         self.table.setHorizontalHeaderLabels([
@@ -924,7 +939,7 @@ class AnemApp(QMainWindow):
         self.table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self.show_table_context_menu)
 
-        # إظهار الأعمدة الأساسية مع إبراز الأيقونات والهاتف لسهولة المتابعة
+        # إظهار الأعمدة الأساسية مع إبراز لأيقونات والهاتف لسهولة المتابعة
         self.table.setColumnHidden(self.COL_ICON, False)
         self.table.setColumnHidden(self.COL_NIN, False)
         self.table.setColumnHidden(self.COL_WASSIT, True)
@@ -936,63 +951,79 @@ class AnemApp(QMainWindow):
         header.setSectionResizeMode(self.COL_RDV_DATE, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(self.COL_DETAILS, QHeaderView.Stretch)
 
-
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.verticalHeader().setDefaultSectionSize(30)
         self.table.itemDoubleClicked.connect(self.edit_member_details)
-        self.table.verticalHeader().setVisible(True)
-        self.table.itemSelectionChanged.connect(self._refresh_member_overview_from_selection)
 
-        # لوحة جانبية خفيفة لإبراز العضو المحدد وسجل النشاط
         self.member_overview_frame = QFrame()
         self.member_overview_frame.setObjectName("MemberOverview")
         overview_layout = QVBoxLayout(self.member_overview_frame)
-        overview_layout.setContentsMargins(8, 8, 8, 8)
-        overview_layout.setSpacing(6)
+        overview_layout.setContentsMargins(12, 10, 12, 10)
+        overview_layout.setSpacing(8)
 
-        self.member_overview_title = QLabel("لا يوجد عضو محدد")
+        self.member_overview_title = QLabel("نظرة سريعة")
         self.member_overview_title.setObjectName("MemberOverviewTitle")
         overview_layout.addWidget(self.member_overview_title)
 
-        self.member_overview_state = QLabel("—")
+        self.member_overview_state = QLabel("الحالة: --")
         self.member_overview_state.setObjectName("MemberOverviewState")
         overview_layout.addWidget(self.member_overview_state)
 
-        self.member_overview_next = QLabel("الخطوة التالية: —")
+        self.member_overview_next = QLabel("الخطوة التالية: --")
         self.member_overview_next.setObjectName("MemberOverviewNext")
         overview_layout.addWidget(self.member_overview_next)
 
-        self.member_overview_wait = QLabel("الانتظار/التحميل: —")
+        self.member_overview_wait = QLabel("الانتظار/التحميل: --")
         self.member_overview_wait.setObjectName("MemberOverviewWait")
         overview_layout.addWidget(self.member_overview_wait)
 
-        self.member_overview_last = QLabel("آخر تحديث: —")
+        self.member_overview_last = QLabel("آخر تحديث: --")
         self.member_overview_last.setObjectName("MemberOverviewLast")
         overview_layout.addWidget(self.member_overview_last)
 
-        self.member_overview_hint = QLabel("حدد عضوًا لعرض تفاصيله.")
+        self.member_overview_hint = QLabel("سيتم تحديث البيانات تلقائيًا عند اختيار عضو أو أثناء المعالجة.")
+        self.member_overview_hint.setWordWrap(True)
         self.member_overview_hint.setObjectName("MemberOverviewHint")
         overview_layout.addWidget(self.member_overview_hint)
 
         overview_layout.addStretch()
 
+        activity_frame = QFrame()
+        activity_frame.setObjectName("ActivityPanel")
+        activity_layout = QVBoxLayout(activity_frame)
+        activity_layout.setContentsMargins(10, 8, 10, 8)
+        activity_layout.setSpacing(6)
+        activity_title = QLabel("سجل النشاط")
+        activity_title.setObjectName("ActivityTitle")
+        activity_layout.addWidget(activity_title)
+
         self.activity_list = QListWidget()
         self.activity_list.setObjectName("ActivityList")
-        overview_layout.addWidget(self.activity_list, 2)
+        activity_layout.addWidget(self.activity_list)
 
-        content_layout = QHBoxLayout()
+        side_stack = QVBoxLayout()
+        side_stack.setSpacing(10)
+        side_stack.addWidget(self.member_overview_frame)
+        side_stack.addWidget(activity_frame)
+
+        content_frame = QFrame()
+        content_frame.setObjectName("ContentFrame")
+        content_layout = QHBoxLayout(content_frame)
+        content_layout.setContentsMargins(10, 8, 10, 8)
         content_layout.setSpacing(10)
         content_layout.addWidget(self.table, 3)
-        content_layout.addWidget(self.member_overview_frame, 1)
-        main_layout.addLayout(content_layout)
+        content_layout.addLayout(side_stack, 1)
 
+        main_layout.addWidget(content_frame)
 
         bottom_controls_layout = QHBoxLayout()
+        bottom_controls_layout.setSpacing(10)
         self.add_member_button = QPushButton("إضافة عضو", self)
         self.add_member_button.setObjectName("add_member_button")
         self.add_member_button.setIcon(self.style().standardIcon(QStyle.SP_FileDialogNewFolder))
         self.add_member_button.clicked.connect(self.add_member)
         bottom_controls_layout.addWidget(self.add_member_button)
+
         self.remove_member_button = QPushButton("حذف المحدد", self)
         self.remove_member_button.setObjectName("remove_member_button")
         self.remove_member_button.setIcon(self.style().standardIcon(QStyle.SP_TrashIcon))
@@ -1005,6 +1036,7 @@ class AnemApp(QMainWindow):
         self.start_button.setIcon(self.style().standardIcon(QStyle.SP_MediaPlay))
         self.start_button.clicked.connect(self.start_monitoring)
         bottom_controls_layout.addWidget(self.start_button)
+
         self.stop_button = QPushButton("إيقاف المراقبة", self)
         self.stop_button.setObjectName("stop_button")
         self.stop_button.setIcon(self.style().standardIcon(QStyle.SP_MediaStop))
@@ -1051,10 +1083,10 @@ class AnemApp(QMainWindow):
         card.value_label = value_label
         card.setStyleSheet(
             f"""
-            QFrame#StatCard {{ background: #0c0f14; border: 1px solid #1f2a36; border-radius: 10px; }}
-            QLabel#StatCardTitle {{ color: #e6edf3; font-weight: 600; }}
+            QFrame#StatCard {{ background: #101827; border: 1px solid #1f2a36; border-radius: 12px; }}
+            QLabel#StatCardTitle {{ color: #cfd8e3; font-weight: 600; }}
             QLabel#StatCardValue {{ color: {accent}; font-weight: 800; font-size: 18px; }}
-            QLabel#StatCardSubtitle {{ color: #9aa6b4; }}
+            QLabel#StatCardSubtitle {{ color: #8ca0b8; }}
             """
         )
         return card

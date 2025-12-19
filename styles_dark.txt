@@ -1,144 +1,154 @@
-/* Modern dark/teal theme with clear accents and better contrast */
+/* Refreshed dark/navy palette with crisp accents and organized panels */
 
 QWidget {
-    background-color: #1f2630;
-    color: #e8eef5;
+    background-color: #0b1220;
+    color: #e5edf7;
     font-family: "Tajawal", "Segoe UI", Arial, sans-serif;
     font-size: 10pt;
 }
 
 QMainWindow {
-    background-color: #1f2630;
+    background-color: #0b1220;
 }
 
 QFrame#HeaderFrame {
-    background: linear-gradient(90deg, #233243, #1f2630);
-    border-bottom: 1px solid #2f3c4a;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0f172a, stop:1 #111a2c);
+    border: 1px solid #1d2635;
+    border-radius: 10px;
 }
 
 QLabel#HeaderTitle {
-    color: #e8eef5;
+    color: #f6fbff;
     font-size: 16pt;
     font-weight: 800;
 }
 
+QLabel#HeaderSubtitle {
+    color: #9fb3c8;
+    font-size: 10pt;
+    font-weight: 500;
+}
+
 QLabel#SubscriptionBadge {
+    background: #0ea5e9;
+    color: #05121f;
+    padding: 8px 12px;
+    border-radius: 12px;
+    font-weight: 800;
+    min-width: 150px;
+    qproperty-alignment: 'AlignCenter';
+}
+
+QPushButton#SubscriptionManageButton,
+QPushButton#SubscriptionRefreshButton {
+    background: #111a2c;
+    color: #e5edf7;
+    border: 1px solid #22324a;
+    border-radius: 10px;
+    padding: 8px 12px;
     font-weight: 700;
+}
+QPushButton#SubscriptionManageButton:hover,
+QPushButton#SubscriptionRefreshButton:hover {
+    border-color: #38bdf8;
+    color: #ffffff;
 }
 
 QFrame#FilterBar {
-    background: #202a35;
-    border: 1px solid #2f3c4a;
-    border-radius: 8px;
+    background: #0f172a;
+    border: 1px solid #1d2635;
+    border-radius: 10px;
 }
 
-QLineEdit {
-    background: #1b2430;
-    color: #e8eef5;
-    border: 1px solid #2f3c4a;
-    border-radius: 6px;
+QLineEdit, QComboBox {
+    background: #0d1525;
+    color: #e5edf7;
+    border: 1px solid #1f2a36;
+    border-radius: 8px;
     padding: 8px 10px;
 }
-
-QLineEdit:focus {
-    border: 1px solid #4dabf7;
-}
-
-QComboBox {
-    background: #1b2430;
-    color: #e8eef5;
-    border: 1px solid #2f3c4a;
-    border-radius: 6px;
-    padding: 6px 8px;
+QLineEdit:focus, QComboBox:focus {
+    border: 1px solid #38bdf8;
 }
 
 QPushButton {
-    background: #3b82f6;
-    color: white;
+    background: #0ea5e9;
+    color: #04101c;
     border: none;
-    border-radius: 6px;
-    padding: 9px 14px;
-    font-weight: 700;
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-weight: 800;
 }
-
-QPushButton:hover { background: #5393ff; }
-QPushButton:pressed { background: #2f6fe2; }
-QPushButton:disabled { background: #3a4a60; color: #9fb3c8; }
+QPushButton:hover { background: #38bdf8; }
+QPushButton:pressed { background: #0284c7; }
+QPushButton:disabled { background: #1b2535; color: #7c8ba1; }
 
 QPushButton#add_member_button { background: #22c55e; }
-QPushButton#add_member_button:hover { background: #32d977; }
+QPushButton#add_member_button:hover { background: #34d399; }
 QPushButton#remove_member_button, QPushButton#stop_button { background: #ef4444; }
-QPushButton#remove_member_button:hover, QPushButton#stop_button:hover { background: #f56565; }
+QPushButton#remove_member_button:hover, QPushButton#stop_button:hover { background: #f87171; }
 QPushButton#start_button { background: #f59e0b; }
-QPushButton#start_button:hover { background: #f7b733; }
+QPushButton#start_button:hover { background: #fbbf24; }
 
-QFrame#InsightFrame {
-    background: #202a35;
-    border: 1px solid #2f3c4a;
-    border-radius: 10px;
+QFrame#InsightFrame,
+QFrame#OperationPanel,
+QFrame#ContentFrame,
+QFrame#ActivityPanel,
+QFrame#MemberOverview {
+    background: #0f172a;
+    border: 1px solid #1d2635;
+    border-radius: 12px;
 }
 
 QFrame#StatCard {
-    background: #1b2430;
-    border: 1px solid #2f3c4a;
-    border-radius: 10px;
+    background: #111a2c;
+    border: 1px solid #1f2a36;
+    border-radius: 12px;
     padding: 8px;
 }
 QLabel#StatCardTitle { color: #9fb3c8; font-weight: 600; }
-QLabel#StatCardValue { color: #4dabf7; font-weight: 800; font-size: 18px; }
-QLabel#StatCardSubtitle { color: #9fb3c8; }
+QLabel#StatCardValue { color: #38bdf8; font-weight: 800; font-size: 18px; }
+QLabel#StatCardSubtitle { color: #8ca0b8; }
 
-QFrame#OperationPanel {
-    background: #1b2430;
-    border: 1px solid #2f3c4a;
-    border-radius: 8px;
-}
-QLabel#OperationCurrent { font-weight: 700; }
+QLabel#OperationCurrent { color: #e5edf7; font-weight: 700; }
 QLabel#OperationNext { color: #9fb3c8; }
-QLabel#OperationTimer { color: #f2c94c; font-weight: 700; }
+QLabel#OperationTimer { color: #fbbf24; font-weight: 800; }
 
 QTableWidget {
-    background: #1b2430;
-    alternate-background-color: #19202b;
-    color: #e8eef5;
-    border: 1px solid #2f3c4a;
-    gridline-color: #2f3c4a;
-    selection-background-color: #3b82f6;
-    selection-color: #ffffff;
+    background: #0d1525;
+    alternate-background-color: #101a2d;
+    color: #e5edf7;
+    border: 1px solid #1f2a36;
+    gridline-color: #233042;
+    selection-background-color: #0ea5e9;
+    selection-color: #04101c;
 }
-
 QHeaderView::section {
-    background: #202a35;
-    color: #e8eef5;
-    padding: 8px 6px;
-    border: 1px solid #2f3c4a;
-    font-weight: 700;
+    background: #111a2c;
+    color: #e5edf7;
+    padding: 9px 6px;
+    border: 1px solid #1f2a36;
+    font-weight: 800;
 }
+QTableWidget::item { padding: 7px 8px; }
+QTableWidget::item:selected { background: #0ea5e9; color: #04101c; }
 
-QTableWidget::item { padding: 6px 8px; }
-QTableWidget::item:selected { background: #3b82f6; color: #fff; }
-
-QFrame#MemberOverview {
-    background: #202a35;
-    border: 1px solid #2f3c4a;
-    border-radius: 10px;
-}
 QLabel#MemberOverviewTitle { font-weight: 800; font-size: 12pt; }
-QLabel#MemberOverviewState { color: #7bd88f; font-weight: 700; }
-QLabel#MemberOverviewNext, QLabel#MemberOverviewWait, QLabel#MemberOverviewLast { color: #c9d6e3; }
+QLabel#MemberOverviewState { color: #34d399; font-weight: 700; }
+QLabel#MemberOverviewNext, QLabel#MemberOverviewWait, QLabel#MemberOverviewLast { color: #cfd8e3; }
 QLabel#MemberOverviewHint { color: #9fb3c8; }
 
 QListWidget#ActivityList {
-    background: #1b2430;
-    border: 1px solid #2f3c4a;
-    border-radius: 8px;
+    background: #0d1525;
+    border: 1px solid #1f2a36;
+    border-radius: 10px;
     padding: 6px;
 }
+QLabel#ActivityTitle { color: #9fb3c8; font-weight: 700; }
 
 QStatusBar {
-    background: #202a35;
-    color: #c9d6e3;
-    border-top: 1px solid #2f3c4a;
+    background: #0f172a;
+    color: #cfd8e3;
+    border-top: 1px solid #1d2635;
 }
-
 QStatusBar QLabel { padding: 0 8px; }
