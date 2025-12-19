@@ -168,6 +168,13 @@ class AnemApp(QMainWindow):
         self.is_filter_active = False
         self.last_added_member_index = None
         self.member_overview_selected_index = None
+        self.member_overview_frame = None
+        self.member_overview_title = None
+        self.member_overview_state = None
+        self.member_overview_next = None
+        self.member_overview_wait = None
+        self.member_overview_last = None
+        self.member_overview_hint = None
 
         self.api_client = AnemAPIClient(
             initial_backoff_general=self.settings.get(SETTING_BACKOFF_GENERAL, DEFAULT_SETTINGS[SETTING_BACKOFF_GENERAL]),
@@ -878,46 +885,15 @@ class AnemApp(QMainWindow):
 
         main_layout.addWidget(self.search_filter_frame)
 
-        # صف إحصائيات ولوحة عمليات منظمة
-        info_row = QHBoxLayout()
-        info_row.setSpacing(8)
-
-        self.insight_frame = QFrame()
-        self.insight_frame.setObjectName("InsightFrame")
-        insight_layout = QHBoxLayout(self.insight_frame)
-        insight_layout.setContentsMargins(10, 4, 10, 4)
-        insight_layout.setSpacing(8)
-        self.insight_frame.setMaximumHeight(130)
-
-        self.stat_total_card = self._create_stat_card("عدد الأعضاء", "0", "إجمالي المسجلين", accent="#38bdf8")
-        self.stat_ready_card = self._create_stat_card("جاهز للحجز", "0", "أعضاء مؤهلون ولديهم تسجيل مسبق", accent="#34d399")
-        self.stat_monitor_card = self._create_stat_card("المراقبة", "--", "الحالة الحالية", accent="#fbbf24")
-
-        insight_layout.addWidget(self.stat_total_card)
-        insight_layout.addWidget(self.stat_ready_card)
-        insight_layout.addWidget(self.stat_monitor_card)
-
-        self.operation_panel_frame = QFrame()
-        self.operation_panel_frame.setObjectName("OperationPanel")
-        op_layout = QVBoxLayout(self.operation_panel_frame)
-        op_layout.setContentsMargins(10, 8, 10, 8)
-        op_layout.setSpacing(4)
-        self.operation_panel_frame.setMaximumHeight(130)
-
-        self.operation_current_label = QLabel("لا توجد عملية جارية")
-        self.operation_current_label.setObjectName("OperationCurrent")
-        self.operation_next_label = QLabel("الخطوة التالية: --")
-        self.operation_next_label.setObjectName("OperationNext")
-        self.operation_timer_label = QLabel("الانتظار: --")
-        self.operation_timer_label.setObjectName("OperationTimer")
-
-        op_layout.addWidget(self.operation_current_label)
-        op_layout.addWidget(self.operation_next_label)
-        op_layout.addWidget(self.operation_timer_label)
-
-        info_row.addWidget(self.insight_frame, 2)
-        info_row.addWidget(self.operation_panel_frame, 1)
-        main_layout.addLayout(info_row)
+        # التركيز على الجدول فقط مع تخفيف العناصر الثانوية
+        self.insight_frame = None
+        self.stat_total_card = None
+        self.stat_ready_card = None
+        self.stat_monitor_card = None
+        self.operation_panel_frame = None
+        self.operation_current_label = None
+        self.operation_next_label = None
+        self.operation_timer_label = None
 
         # شريط الحالة المبسط أسفل النافذة
         self.statusBar = QStatusBar()
@@ -973,66 +949,13 @@ class AnemApp(QMainWindow):
         self.table.verticalHeader().setDefaultSectionSize(30)
         self.table.itemDoubleClicked.connect(self.edit_member_details)
 
-        self.member_overview_frame = QFrame()
-        self.member_overview_frame.setObjectName("MemberOverview")
-        overview_layout = QVBoxLayout(self.member_overview_frame)
-        overview_layout.setContentsMargins(12, 10, 12, 10)
-        overview_layout.setSpacing(8)
-
-        self.member_overview_title = QLabel("نظرة سريعة")
-        self.member_overview_title.setObjectName("MemberOverviewTitle")
-        overview_layout.addWidget(self.member_overview_title)
-
-        self.member_overview_state = QLabel("الحالة: --")
-        self.member_overview_state.setObjectName("MemberOverviewState")
-        overview_layout.addWidget(self.member_overview_state)
-
-        self.member_overview_next = QLabel("الخطوة التالية: --")
-        self.member_overview_next.setObjectName("MemberOverviewNext")
-        overview_layout.addWidget(self.member_overview_next)
-
-        self.member_overview_wait = QLabel("الانتظار/التحميل: --")
-        self.member_overview_wait.setObjectName("MemberOverviewWait")
-        overview_layout.addWidget(self.member_overview_wait)
-
-        self.member_overview_last = QLabel("آخر تحديث: --")
-        self.member_overview_last.setObjectName("MemberOverviewLast")
-        overview_layout.addWidget(self.member_overview_last)
-
-        self.member_overview_hint = QLabel("سيتم تحديث البيانات تلقائيًا عند اختيار عضو أو أثناء المعالجة.")
-        self.member_overview_hint.setWordWrap(True)
-        self.member_overview_hint.setObjectName("MemberOverviewHint")
-        overview_layout.addWidget(self.member_overview_hint)
-
-        overview_layout.addStretch()
-
-        activity_frame = QFrame()
-        activity_frame.setObjectName("ActivityPanel")
-        activity_layout = QVBoxLayout(activity_frame)
-        activity_layout.setContentsMargins(10, 8, 10, 8)
-        activity_layout.setSpacing(6)
-        activity_title = QLabel("سجل النشاط")
-        activity_title.setObjectName("ActivityTitle")
-        activity_layout.addWidget(activity_title)
-
-        self.activity_list = QListWidget()
-        self.activity_list.setObjectName("ActivityList")
-        activity_layout.addWidget(self.activity_list)
-
-        side_stack = QVBoxLayout()
-        side_stack.setSpacing(10)
-        side_stack.addWidget(self.member_overview_frame)
-        side_stack.addWidget(activity_frame)
-
         content_frame = QFrame()
         content_frame.setObjectName("ContentFrame")
         content_layout = QHBoxLayout(content_frame)
         content_layout.setContentsMargins(10, 8, 10, 8)
-        content_layout.setSpacing(10)
-        content_layout.addWidget(self.table, 4)
-        content_layout.addLayout(side_stack, 1)
-        content_layout.setStretch(0, 4)
-        content_layout.setStretch(1, 1)
+        content_layout.setSpacing(0)
+        content_layout.addWidget(self.table)
+        content_layout.setStretch(0, 1)
 
         main_layout.addWidget(content_frame)
 
