@@ -621,24 +621,24 @@ class AnemApp(QMainWindow):
 
     def _update_messages_action_ui(self):
         """تحديث عنصر القائمة الخاص بالرسائل (النقطة 2 - جزء من Badge)."""
-        if hasattr(self, 'messages_action_menu'): 
-            base_text = "الرسائل والتحديثات"
-            # استخدام أيقونة مميزة إذا كانت هناك رسائل غير مقروءة
-            icon_theme_name = "mail-unread-new" if self.unread_message_count > 0 else "mail-read" 
-            
-            action_icon = QIcon.fromTheme(icon_theme_name, self.style().standardIcon(QStyle.SP_MessageBoxInformation)) 
-            self.messages_action_menu.setIcon(action_icon)
+        if not self.messages_action_menu:
+            return
+        base_text = "الرسائل والتحديثات"
+        icon_theme_name = "mail-unread-new" if self.unread_message_count > 0 else "mail-read"
 
-            if self.unread_message_count > 0:
-                self.messages_action_menu.setText(f"{base_text} ({self.unread_message_count})")
-                font = self.messages_action_menu.font()
-                font.setBold(True) # تمييز النص إذا كانت هناك رسائل غير مقروءة
-                self.messages_action_menu.setFont(font)
-            else:
-                self.messages_action_menu.setText(base_text)
-                font = self.messages_action_menu.font()
-                font.setBold(False)
-                self.messages_action_menu.setFont(font)
+        action_icon = QIcon.fromTheme(icon_theme_name, self.style().standardIcon(QStyle.SP_MessageBoxInformation))
+        self.messages_action_menu.setIcon(action_icon)
+
+        if self.unread_message_count > 0:
+            self.messages_action_menu.setText(f"{base_text} ({self.unread_message_count})")
+            font = self.messages_action_menu.font()
+            font.setBold(True)
+            self.messages_action_menu.setFont(font)
+        else:
+            self.messages_action_menu.setText(base_text)
+            font = self.messages_action_menu.font()
+            font.setBold(False)
+            self.messages_action_menu.setFont(font)
 
     def _update_messages_button_status_bar(self):
         """تحديث زر الرسائل في شريط الحالة (النقطة 2 - Badge)."""
@@ -705,28 +705,10 @@ class AnemApp(QMainWindow):
         self.settings_action.triggered.connect(self.open_settings_dialog)
         file_menu.addAction(self.settings_action)
 
-        tools_menu = menubar.addMenu("أدوات")
-        self.toggle_search_filter_action = QAction("إظهار/إخفاء البحث والفلترة", self)
-        self.toggle_search_filter_action.setCheckable(True)
-        self.toggle_search_filter_action.setChecked(True)
-        self.toggle_search_filter_action.triggered.connect(self.toggle_search_filter_bar)
-        tools_menu.addAction(self.toggle_search_filter_action)
-
-        self.toggle_details_action = QAction("إظهار التفاصيل", self)
-        self.toggle_details_action.setCheckable(True)
-        self.toggle_details_action.setChecked(False)
-        self.toggle_details_action.triggered.connect(self.toggle_column_visibility)
-        tools_menu.addAction(self.toggle_details_action)
-
-        self.view_subscription_action = QAction(QIcon.fromTheme("security-high", self.style().standardIcon(QStyle.SP_MessageBoxInformation)), "عرض تفاصيل الاشتراك", self)
-        self.view_subscription_action.triggered.connect(self._show_subscription_details_dialog)
-        tools_menu.addAction(self.view_subscription_action)
-        
-        # إضافة عنصر قائمة الرسائل
-        self.messages_action_menu = QAction("الرسائل والتحديثات", self) 
-        self.messages_action_menu.triggered.connect(self._show_messages_dialog)
-        tools_menu.addAction(self.messages_action_menu)
-        self._update_messages_action_ui() # تحديث الواجهة الأولية
+        # واجهة مبسطة بدون قوائم أدوات إضافية
+        self.toggle_search_filter_action = None
+        self.toggle_details_action = None
+        self.messages_action_menu = None
 
 
         file_menu.addSeparator()
@@ -734,185 +716,35 @@ class AnemApp(QMainWindow):
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
 
-        header_frame = QFrame(self)
-        header_frame.setObjectName("HeaderFrame")
-        header_layout = QHBoxLayout(header_frame)
-        app_title_label = QLabel("برنامج إدارة مواعيد منحة البطالة", self)
-        header_layout.addWidget(app_title_label, alignment=Qt.AlignLeft | Qt.AlignVCenter)
-        header_layout.addStretch()
-        self.datetime_label = QLabel(self)
-        self.datetime_label.setObjectName("datetime_label")
-        header_layout.addWidget(self.datetime_label, alignment=Qt.AlignRight | Qt.AlignVCenter)
-        self.update_datetime() 
-        self.datetime_timer = QTimer(self)
-        self.datetime_timer.timeout.connect(self.update_datetime)
-        self.datetime_timer.start(1000) 
-        main_layout.addWidget(header_frame)
+        self.datetime_label = None
 
-        self.search_filter_frame = QFrame(self)
-        self.search_filter_frame.setObjectName("SearchFilterFrame")
-        search_filter_layout = QHBoxLayout(self.search_filter_frame)
-        search_filter_layout.setSpacing(10)
-
-        self.search_input = QLineEdit(self)
-        self.search_input.setPlaceholderText("بحث بالاسم, NIN, الوسيط...")
-        self.search_input.textChanged.connect(self.apply_filter_and_search)
-        search_filter_layout.addWidget(self.search_input, 2)
-
-        self.filter_by_combo = QComboBox(self)
-        self.filter_by_combo.addItem("فلترة حسب...", None)
-        self.filter_by_combo.addItem("الحالة", "status")
-        self.filter_by_combo.addItem("لديه موعد", "has_rdv")
-        self.filter_by_combo.addItem("مستفيد حاليًا", "have_allocation")
-        self.filter_by_combo.addItem("تم تحميل PDF التعهد", "pdf_honneur")
-        self.filter_by_combo.addItem("تم تحميل PDF الموعد", "pdf_rdv")
-        self.filter_by_combo.currentIndexChanged.connect(self.on_filter_by_changed)
-        search_filter_layout.addWidget(self.filter_by_combo, 1)
-
-        self.filter_value_combo = QComboBox(self)
-        self.filter_value_combo.setVisible(False)
-        self.filter_value_combo.currentIndexChanged.connect(self.apply_filter_and_search)
-        search_filter_layout.addWidget(self.filter_value_combo, 1)
-
-        self.clear_filter_button = QPushButton("مسح الفلتر", self)
-        self.clear_filter_button.setIcon(self.style().standardIcon(QStyle.SP_DialogResetButton))
-        self.clear_filter_button.clicked.connect(self.clear_filter_and_search)
-        search_filter_layout.addWidget(self.clear_filter_button)
-
-        main_layout.addWidget(self.search_filter_frame)
+        self.search_filter_frame = None
+        self.search_input = None
+        self.filter_by_combo = None
+        self.filter_value_combo = None
+        self.clear_filter_button = None
 
 
-        main_controls_frame = QFrame(self)
-        main_controls_layout = QHBoxLayout(main_controls_frame)
-        section_title_label = QLabel("إدارة المستفيدين", self)
-        section_title_label.setObjectName("section_title_label")
-        main_controls_layout.addWidget(section_title_label, alignment=Qt.AlignLeft | Qt.AlignVCenter)
-        main_controls_layout.addStretch()
-        main_layout.addWidget(main_controls_frame)
+        section_title_label = None
 
-        # لوحة موجزة تعرض حالة العمليات الجارية وما سيتم لاحقًا
-        self.operation_panel_frame = QFrame(self)
-        self.operation_panel_frame.setObjectName("OperationPanel")
-        operation_panel_layout = QHBoxLayout(self.operation_panel_frame)
-        operation_panel_layout.setContentsMargins(10, 6, 10, 6)
-        operation_panel_layout.setSpacing(12)
+        self.operation_panel_frame = None
+        self.operation_current_label = None
+        self.operation_next_label = None
+        self.operation_timer_label = None
 
-        self.operation_current_label = QLabel("حالة العمليات: التطبيق جاهز")
-        self.operation_current_label.setObjectName("OperationCurrentLabel")
-        self.operation_current_label.setToolTip("العملية أو الفحص الجاري الآن")
+        self.insight_frame = None
+        self.stat_total_card = None
+        self.stat_ready_card = None
+        self.stat_monitor_card = None
+        self.activity_list = None
 
-        self.operation_next_label = QLabel("التالي: لا يوجد")
-        self.operation_next_label.setObjectName("OperationNextLabel")
-        self.operation_next_label.setToolTip("الخطوة أو الطلب التالي إن وجد")
-
-        self.operation_timer_label = QLabel("الزمن المتبقي: --")
-        self.operation_timer_label.setObjectName("OperationTimerLabel")
-        self.operation_timer_label.setToolTip("الوقت المتبقي قبل الحركة القادمة")
-
-        operation_panel_layout.addWidget(self.operation_current_label, 2)
-        operation_panel_layout.addWidget(self.operation_next_label, 2)
-        operation_panel_layout.addWidget(self.operation_timer_label, 1)
-        operation_panel_layout.addStretch()
-
-        self.operation_panel_frame.setStyleSheet(
-            """
-            QFrame#OperationPanel { background: #1b222c; border: 1px solid #2c3642; border-radius: 10px; }
-            QLabel#OperationCurrentLabel { color: #e9eef5; font-weight: 700; }
-            QLabel#OperationNextLabel, QLabel#OperationTimerLabel { color: #cfd8e3; }
-            """
-        )
-
-        main_layout.addWidget(self.operation_panel_frame)
-
-        # شريط إحصائيات سريع ولوحة نشاط حديث لزيادة الوضوح
-        self.insight_frame = QFrame(self)
-        self.insight_frame.setObjectName("InsightFrame")
-        insight_layout = QHBoxLayout(self.insight_frame)
-        insight_layout.setContentsMargins(10, 8, 10, 8)
-        insight_layout.setSpacing(12)
-
-        # بطاقات إحصائية: إجمالي الأعضاء، الجاهزون للحجز، المراقبة النشطة
-        self.stat_total_card = self._create_stat_card("إجمالي الأعضاء", "--", "كل الأعضاء المسجلين", accent="#4dabf7")
-        self.stat_ready_card = self._create_stat_card("جاهز لحجز الموعد", "--", "أعضاء مؤهلون وبدون موعد", accent="#70e0a3")
-        self.stat_monitor_card = self._create_stat_card("حالة المراقبة", "موقوف", "الحالة العامة للمتابعة", accent="#f2c94c")
-
-        insight_layout.addWidget(self.stat_total_card)
-        insight_layout.addWidget(self.stat_ready_card)
-        insight_layout.addWidget(self.stat_monitor_card)
-
-        # قائمة نشاط مختصرة تعرض آخر الرسائل والحركات
-        self.activity_list = QListWidget(self)
-        self.activity_list.setObjectName("ActivityList")
-        self.activity_list.setMinimumHeight(110)
-        self.activity_list.setMaximumHeight(160)
-        self.activity_list.setSpacing(3)
-        self.activity_list.setAlternatingRowColors(True)
-        self.activity_list.setSelectionMode(QAbstractItemView.NoSelection)
-        self.activity_list.setFocusPolicy(Qt.NoFocus)
-        insight_layout.addWidget(self.activity_list, 2)
-
-        self.insight_frame.setStyleSheet(
-            """
-            QFrame#InsightFrame { background: #0d1117; border: 1px solid #243447; border-radius: 10px; }
-            QListWidget#ActivityList { background: #0c0f14; color: #e6edf3; border: 1px solid #1f2a36; border-radius: 8px; }
-            QListWidget#ActivityList::item { padding: 6px; }
-            QListWidget#ActivityList::item:nth-child(odd) { background: #111821; }
-            QListWidget#ActivityList::item:selected { background: #1f2a36; }
-            """
-        )
-
-        main_layout.addWidget(self.insight_frame)
-
-        # لوحة نظرة سريعة على العضو المحدد/النشط
-        self.member_overview_frame = QFrame(self)
-        self.member_overview_frame.setObjectName("MemberOverview")
-        overview_layout = QVBoxLayout(self.member_overview_frame)
-        overview_layout.setContentsMargins(12, 8, 12, 8)
-        overview_layout.setSpacing(6)
-
-        self.member_overview_title = QLabel("👤 لا يوجد عضو محدد")
-        self.member_overview_title.setObjectName("MemberOverviewTitle")
-
-        self.member_overview_state = QLabel("الحالة: --")
-        self.member_overview_state.setObjectName("MemberOverviewState")
-        self.member_overview_state.setWordWrap(True)
-
-        self.member_overview_next = QLabel("الخطوة القادمة: --")
-        self.member_overview_next.setObjectName("MemberOverviewNext")
-        self.member_overview_next.setWordWrap(True)
-
-        self.member_overview_wait = QLabel("الانتظار/التحميل: --")
-        self.member_overview_wait.setObjectName("MemberOverviewWait")
-        self.member_overview_wait.setWordWrap(True)
-
-        self.member_overview_last = QLabel("آخر رسالة: --")
-        self.member_overview_last.setObjectName("MemberOverviewLast")
-        self.member_overview_last.setWordWrap(True)
-
-        self.member_overview_hint = QLabel("اختر عضوًا لمعرفة تفاصيل حالته وخطوته القادمة.")
-        self.member_overview_hint.setObjectName("MemberOverviewHint")
-        self.member_overview_hint.setWordWrap(True)
-
-        overview_layout.addWidget(self.member_overview_title)
-        overview_layout.addWidget(self.member_overview_state)
-        overview_layout.addWidget(self.member_overview_next)
-        overview_layout.addWidget(self.member_overview_wait)
-        overview_layout.addWidget(self.member_overview_last)
-        overview_layout.addWidget(self.member_overview_hint)
-
-        self.member_overview_frame.setStyleSheet(
-            """
-            QFrame#MemberOverview { background: #0f141a; border: 1px solid #2c3642; border-radius: 10px; }
-            QLabel#MemberOverviewTitle { color: #e9eef5; font-weight: 700; font-size: 14px; }
-            QLabel#MemberOverviewState { color: #d1e8ff; font-weight: 600; }
-            QLabel#MemberOverviewNext { color: #c7f0d8; }
-            QLabel#MemberOverviewWait { color: #f5e6c5; }
-            QLabel#MemberOverviewLast { color: #d8dee9; }
-            QLabel#MemberOverviewHint { color: #a3b1c2; font-style: italic; }
-            """
-        )
-
-        main_layout.addWidget(self.member_overview_frame)
+        self.member_overview_frame = None
+        self.member_overview_title = None
+        self.member_overview_state = None
+        self.member_overview_next = None
+        self.member_overview_wait = None
+        self.member_overview_last = None
+        self.member_overview_hint = None
 
 
         self.statusBar = QStatusBar()
@@ -921,36 +753,10 @@ class AnemApp(QMainWindow):
 
         self.status_bar_label = QLabel("التطبيق جاهز.")
         self.status_bar_label.setObjectName("StatusDetail")
-        self.status_bar_label.setMinimumWidth(260)
-
-        self.status_chip_label = QLabel("ℹ️ حالة عامة")
-        self.status_chip_label.setObjectName("StatusChip")
-        self.status_chip_label.setAlignment(Qt.AlignCenter)
-        self.status_chip_label.setMinimumWidth(140)
-
-        self.status_spinner_label = QLabel("")
-        self.status_spinner_label.setObjectName("StatusSpinner")
-        self.status_spinner_label.setVisible(False)
-
-        self.last_scan_label = QLabel("آخر حدث: --:--:--")
-        self.last_scan_label.setToolTip("توقيت آخر رسالة أو عملية")
-        self.last_scan_label.setObjectName("LastEventLabel")
-
-        self.countdown_label = QLabel("⏸️ لا يوجد عد تنازلي")
-        self.countdown_label.setToolTip("الوقت المتبقي قبل الخطوة التالية")
+        self.countdown_label = QLabel("لا يوجد عد تنازلي")
         self.countdown_label.setObjectName("CountdownLabel")
-
-        self.refresh_hint_label = QLabel("لا يوجد تحديث نشط")
-        self.refresh_hint_label.setObjectName("RefreshHintLabel")
-        self.refresh_hint_label.setToolTip("أحدث حالة للتحديث/التحميل")
-
-        # إنشاء زر الرسائل في شريط الحالة
-        self.messages_button_status_bar = QToolButton(self)
-        self.messages_button_status_bar.setAutoRaise(True)
-        self.messages_button_status_bar.setToolButtonStyle(Qt.ToolButtonTextBesideIcon) # لعرض النص بجانب الأيقونة
-        self.messages_button_status_bar.clicked.connect(self._show_messages_dialog)
-        self.messages_button_status_bar.setObjectName("StatusBarMessagesButton")
-        self.messages_button_status_bar.setFocusPolicy(Qt.NoFocus)
+        self.last_scan_label = QLabel("آخر تحديث: --")
+        self.last_scan_label.setObjectName("LastEventLabel")
 
         status_layout = QHBoxLayout()
         status_layout.setContentsMargins(8, 2, 8, 2)
@@ -958,33 +764,18 @@ class AnemApp(QMainWindow):
         status_container = QWidget()
         status_container.setLayout(status_layout)
 
-        status_layout.addWidget(self.messages_button_status_bar)
-        status_layout.addWidget(self.status_chip_label)
-        status_layout.addWidget(self.status_spinner_label)
         status_layout.addWidget(self.status_bar_label, 1)
-        status_layout.addWidget(self.refresh_hint_label)
         status_layout.addWidget(self.countdown_label)
         status_layout.addWidget(self.last_scan_label)
 
         self.statusBar.addPermanentWidget(status_container, 1)
-        self.statusBar.setStyleSheet(
-            """
-            QStatusBar#MainStatusBar { background: #151a20; color: #dfe6e9; }
-            QLabel#StatusChip { background: #2d3436; color: #ecf0f1; border-radius: 8px; padding: 4px 10px; font-weight: 600; }
-            QLabel#StatusDetail { color: #e0e6ed; }
-            QLabel#RefreshHintLabel, QLabel#CountdownLabel, QLabel#LastEventLabel { color: #cfd8e3; }
-            QToolButton#StatusBarMessagesButton { color: #d8dee9; border: none; padding: 2px 6px; }
-            QToolButton#StatusBarMessagesButton:hover { background-color: #4C566A; }
-            """
-        )
-        self._update_messages_button_status_bar() # تحديث الواجهة الأولية للزر
 
 
         self.table = QTableWidget(self)
         self.table.setColumnCount(self.COL_DETAILS + 1)
         self.table.setHorizontalHeaderLabels([
-            "أيقونة", "الاسم الكامل", "رقم التعريف", "رقم الوسيط",
-            "الحساب البريدي", "رقم الهاتف", "الحالة", "تاريخ الموعد", "آخر تحديث/خطأ"
+            "أيقونة", "الاسم", "رقم التعريف", "رقم الوسيط",
+            "الحساب البريدي", "رقم الهاتف", "الحالة", "تاريخ الموعد", "آخر تحديث"
         ])
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.Interactive)
@@ -993,13 +784,15 @@ class AnemApp(QMainWindow):
         self.table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self.show_table_context_menu)
 
-        self.toggle_column_visibility(self.toggle_details_action.isChecked()) 
+        # إبقاء الواجهة بسيطة بإظهار الأعمدة الأساسية فقط
+        self.table.setColumnHidden(self.COL_ICON, True)
+        self.table.setColumnHidden(self.COL_NIN, True)
+        self.table.setColumnHidden(self.COL_WASSIT, True)
+        self.table.setColumnHidden(self.COL_CCP, True)
+        self.table.setColumnHidden(self.COL_PHONE_NUMBER, True)
 
-        header.setSectionResizeMode(self.COL_ICON, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(self.COL_FULL_NAME_AR, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(self.COL_PHONE_NUMBER, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(self.COL_FULL_NAME_AR, QHeaderView.Stretch)
         header.setSectionResizeMode(self.COL_STATUS, QHeaderView.ResizeToContents)
-        header.setMinimumSectionSize(150)
         header.setSectionResizeMode(self.COL_RDV_DATE, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(self.COL_DETAILS, QHeaderView.Stretch)
 
@@ -1023,12 +816,6 @@ class AnemApp(QMainWindow):
         self.remove_member_button.setIcon(self.style().standardIcon(QStyle.SP_TrashIcon))
         self.remove_member_button.clicked.connect(self.remove_member)
         bottom_controls_layout.addWidget(self.remove_member_button)
-
-        self.check_now_button = QPushButton("فحص العضو المحدد", self)
-        self.check_now_button.setObjectName("check_now_button")
-        self.check_now_button.setIcon(self.style().standardIcon(QStyle.SP_BrowserReload))
-        self.check_now_button.clicked.connect(self.trigger_manual_check_for_selected)
-        bottom_controls_layout.addWidget(self.check_now_button)
 
         bottom_controls_layout.addStretch()
         self.start_button = QPushButton("بدء المراقبة", self)
@@ -1054,8 +841,11 @@ class AnemApp(QMainWindow):
         self._update_insight_metrics()
 
     def toggle_search_filter_bar(self, checked):
+        if not self.search_filter_frame:
+            return
         self.search_filter_frame.setVisible(checked)
-        self.toggle_search_filter_action.setChecked(checked)
+        if self.toggle_search_filter_action:
+            self.toggle_search_filter_action.setChecked(checked)
 
     def _create_stat_card(self, title, value, subtitle, accent="#4dabf7"):
         card = QFrame(self)
@@ -1089,7 +879,7 @@ class AnemApp(QMainWindow):
 
     def _append_activity_entry(self, message, level="info"):
         """إضافة رسالة إلى لوحة النشاط مع تمييز اللون بحسب مستوى الرسالة."""
-        if not hasattr(self, "activity_list"):
+        if not getattr(self, "activity_list", None):
             return
         max_items = 12
         prefix = {"info": "ℹ️", "warn": "⚠️", "error": "❌"}.get(level, "ℹ️")
@@ -1110,6 +900,8 @@ class AnemApp(QMainWindow):
         self.activity_list.scrollToBottom()
 
     def on_filter_by_changed(self, index):
+        if not self.filter_by_combo or not self.filter_value_combo:
+            return
         filter_key = self.filter_by_combo.itemData(index)
         self.filter_value_combo.clear()
         self.filter_value_combo.setVisible(False)
@@ -1128,6 +920,8 @@ class AnemApp(QMainWindow):
         self.apply_filter_and_search() 
 
     def clear_filter_and_search(self):
+        if not self.search_input or not self.filter_by_combo:
+            return
         self.search_input.clear()
         self.filter_by_combo.setCurrentIndex(0)
         self._show_toast("تم مسح الفلتر بنجاح.", type="info", title="فلتر")
@@ -1135,6 +929,8 @@ class AnemApp(QMainWindow):
 
     def _update_insight_metrics(self):
         """تحديث البطاقات الإحصائية لتعكس حالة الأعضاء والمتابعة."""
+        if not self.stat_total_card or not self.stat_ready_card or not self.stat_monitor_card:
+            return
         total_members = len(self.members_list)
         ready_for_rdv = 0
         for member in self.members_list:
@@ -1157,6 +953,11 @@ class AnemApp(QMainWindow):
 
 
     def apply_filter_and_search(self):
+        if not self.search_input or not self.filter_by_combo or not self.filter_value_combo:
+            self.is_filter_active = False
+            self.filtered_members_list = list(self.members_list)
+            self.update_table()
+            return
         search_term = self.search_input.text().lower().strip()
         filter_key = self.filter_by_combo.itemData(self.filter_by_combo.currentIndex())
         filter_value_data = self.filter_value_combo.itemData(self.filter_value_combo.currentIndex())
@@ -1354,6 +1155,8 @@ class AnemApp(QMainWindow):
         return None
 
     def _refresh_member_overview_from_selection(self):
+        if not self.member_overview_frame:
+            return
         selection_model = self.table.selectionModel()
         if not selection_model or not selection_model.selectedRows():
             self.member_overview_selected_index = None
@@ -1407,7 +1210,7 @@ class AnemApp(QMainWindow):
         return self.latest_countdown_text
 
     def _set_member_overview_content(self, member, status_override=None, next_text=None, wait_text=None, last_msg=None, hint_text=None):
-        if not hasattr(self, 'member_overview_title'):
+        if not getattr(self, 'member_overview_title', None):
             return
 
         if member is None:
@@ -1854,15 +1657,19 @@ class AnemApp(QMainWindow):
     def update_datetime(self):
         now = QDateTime.currentDateTime()
         arabic_locale = QLocale(QLocale.Arabic, QLocale.Algeria)
-        self.datetime_label.setText(arabic_locale.toString(now, "dddd, dd MMMM yy - hh:mm:ss AP"))
+        if self.datetime_label:
+            self.datetime_label.setText(arabic_locale.toString(now, "dddd, dd MMMM yy - hh:mm:ss AP"))
 
 
     def toggle_column_visibility(self, checked):
+        if not self.table:
+            return
         self.table.setColumnHidden(self.COL_NIN, not checked)
         self.table.setColumnHidden(self.COL_WASSIT, not checked)
         self.table.setColumnHidden(self.COL_CCP, not checked)
         self.table.setColumnHidden(self.COL_PHONE_NUMBER, not checked)
-        self.toggle_details_action.setText("إخفاء التفاصيل" if checked else "إظهار التفاصيل")
+        if self.toggle_details_action:
+            self.toggle_details_action.setText("إخفاء التفاصيل" if checked else "إظهار التفاصيل")
         self.update_status_bar_message(f"تم {'إظهار' if checked else 'إخفاء'} الأعمدة التفصيلية.", is_general_message=True)
 
 
@@ -2507,12 +2314,14 @@ class AnemApp(QMainWindow):
 
 
     def _advance_status_spinner(self):
+        if not getattr(self, 'status_spinner_label', None):
+            return
         self.status_spinner_idx = (self.status_spinner_idx + 1) % len(self.status_spinner_chars)
         self.status_spinner_label.setText(self.status_spinner_chars[self.status_spinner_idx])
 
 
     def _update_refresh_hint(self, text=None, busy=False):
-        if hasattr(self, 'refresh_hint_label'):
+        if getattr(self, 'refresh_hint_label', None):
             if text is not None:
                 self.refresh_hint_label.setText(text)
             elif not self.refresh_hint_label.text().strip():
@@ -2535,7 +2344,7 @@ class AnemApp(QMainWindow):
 
 
     def _set_operation_panel(self, current_text=None, next_text=None, wait_seconds=None, level="info"):
-        if not hasattr(self, 'operation_current_label'):
+        if not getattr(self, 'operation_current_label', None):
             return
 
         color_map = {
@@ -2569,27 +2378,10 @@ class AnemApp(QMainWindow):
             self.status_bar_label.setText(final_message)
 
         if hasattr(self, 'last_scan_label'):
-            self.last_scan_label.setText(f"آخر حدث: {time.strftime('%H:%M:%S')}")
-
-        chip_label = "حالة عامة" if is_general_message else "تشغيل/تحميل"
-        self._update_status_chip(level=level, label_text=chip_label)
-        self._update_refresh_hint(hint_text, busy)
-
-        level_for_feed = "info"
-        if level in ("warning", "warn"):
-            level_for_feed = "warn"
-        elif level in ("error", "critical"):
-            level_for_feed = "error"
-        self._append_activity_entry(final_message, level=level_for_feed)
-
-        # إبراز الحالة التشغيلية في لوحة العمليات لتبسيط القراءة للمستخدم
-        if busy or hint_text:
-            self._set_operation_panel(current_text=final_message, next_text=hint_text, level=level)
-        elif is_general_message:
-            self._set_operation_panel(current_text=final_message, level=level)
+            self.last_scan_label.setText(f"آخر تحديث: {time.strftime('%H:%M:%S')}")
 
         if hasattr(self, 'countdown_label') and self.countdown_label.text().strip() == "":
-            self.countdown_label.setText("⏸️ لا يوجد عد تنازلي")
+            self.countdown_label.setText("لا يوجد عد تنازلي")
 
 
     def update_countdown_timer_display(self, time_remaining_str):
@@ -2598,19 +2390,12 @@ class AnemApp(QMainWindow):
             if display_text:
                 self.countdown_label.setText(f"⏳ {display_text}")
                 self.countdown_label.setToolTip("الوقت المتبقي قبل تنفيذ الخطوة التالية")
-                self._update_refresh_hint(f"العد التنازلي: {display_text}", busy=True)
-                self._set_operation_panel(next_text="متابعة بعد اكتمال العد", level="info")
                 self.latest_countdown_text = display_text
             else:
-                self.countdown_label.setText("⏸️ لا يوجد عد تنازلي")
+                self.countdown_label.setText("لا يوجد عد تنازلي")
                 self.countdown_label.setToolTip("لا يوجد انتظار حالي")
-                self._update_refresh_hint("لا يوجد تحديث نشط", busy=False)
-                self._set_operation_panel(wait_seconds=0, level="info")
                 self.latest_countdown_text = "لا يوجد انتظار حالي"
 
-            if self.member_overview_selected_index is not None and 0 <= self.member_overview_selected_index < len(self.members_list):
-                target_member = self.members_list[self.member_overview_selected_index]
-                self._set_member_overview_content(target_member, wait_text=self.latest_countdown_text)
 
 
     def start_monitoring(self):
