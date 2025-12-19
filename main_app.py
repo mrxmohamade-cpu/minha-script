@@ -895,27 +895,27 @@ class AnemApp(QMainWindow):
         self.operation_next_label = None
         self.operation_timer_label = None
 
-        # شريط الحالة المبسط أسفل النافذة
+        # شريط الحالة المبسط أسفل النافذة (المصدر الوحيد للحالة)
         self.statusBar = QStatusBar()
         self.statusBar.setObjectName("MainStatusBar")
         self.setStatusBar(self.statusBar)
 
         self.status_bar_label = QLabel("التطبيق جاهز.")
         self.status_bar_label.setObjectName("StatusDetail")
-        self.countdown_label = QLabel("لا يوجد عد تنازلي")
+        self.countdown_label = QLabel("لا يوجد انتظار")
         self.countdown_label.setObjectName("CountdownLabel")
-        self.last_scan_label = QLabel("آخر تحديث: --")
-        self.last_scan_label.setObjectName("LastEventLabel")
+        self.current_member_label = QLabel("لا يوجد عضو قيد المعالجة")
+        self.current_member_label.setObjectName("CurrentMemberLabel")
 
         status_layout = QHBoxLayout()
         status_layout.setContentsMargins(10, 2, 10, 2)
-        status_layout.setSpacing(12)
+        status_layout.setSpacing(16)
         status_container = QWidget()
         status_container.setLayout(status_layout)
 
-        status_layout.addWidget(self.status_bar_label, 2)
+        status_layout.addWidget(self.status_bar_label, 3)
         status_layout.addWidget(self.countdown_label, 1)
-        status_layout.addWidget(self.last_scan_label, 1)
+        status_layout.addWidget(self.current_member_label, 2)
 
         self.statusBar.addPermanentWidget(status_container, 1)
 
@@ -2536,6 +2536,7 @@ class AnemApp(QMainWindow):
 
     def update_status_bar_message(self, message, is_general_message=True, member_obj=None, original_idx_if_member=None, level="info", busy=False, hint_text=None):
         final_message = message
+        member_display = None
         if member_obj and original_idx_if_member is not None and original_idx_if_member >= 0:
             member_display = self._get_member_display_name_with_index(member_obj, original_idx_if_member)
             final_message = f"{member_display}: {message}"
@@ -2543,22 +2544,25 @@ class AnemApp(QMainWindow):
         if hasattr(self, 'status_bar_label'):
             self.status_bar_label.setText(final_message)
 
-        if hasattr(self, 'last_scan_label'):
-            self.last_scan_label.setText(f"آخر تحديث: {time.strftime('%H:%M:%S')}")
+        if hasattr(self, 'current_member_label'):
+            if member_display:
+                self.current_member_label.setText(f"العضو الحالي: {member_display}")
+            elif not is_general_message:
+                self.current_member_label.setText("العضو الحالي: --")
 
-        if hasattr(self, 'countdown_label') and self.countdown_label.text().strip() == "":
-            self.countdown_label.setText("لا يوجد عد تنازلي")
+        if hasattr(self, 'countdown_label') and not self.countdown_label.text().strip():
+            self.countdown_label.setText("لا يوجد انتظار")
 
 
     def update_countdown_timer_display(self, time_remaining_str):
         if hasattr(self, 'countdown_label'):
             display_text = time_remaining_str.strip()
             if display_text:
-                self.countdown_label.setText(f"⏳ {display_text}")
+                self.countdown_label.setText(f"المحاولة التالية بعد: {display_text}")
                 self.countdown_label.setToolTip("الوقت المتبقي قبل تنفيذ الخطوة التالية")
                 self.latest_countdown_text = display_text
             else:
-                self.countdown_label.setText("لا يوجد عد تنازلي")
+                self.countdown_label.setText("لا يوجد انتظار")
                 self.countdown_label.setToolTip("لا يوجد انتظار حالي")
                 self.latest_countdown_text = "لا يوجد انتظار حالي"
 

@@ -150,7 +150,7 @@ QStatusBar#MainStatusBar {
 }
 QLabel#StatusDetail { color: #dfe6f3; font-weight: 700; }
 QLabel#CountdownLabel { color: #a5b3c9; }
-QLabel#LastEventLabel { color: #a5b3c9; }
+QLabel#CurrentMemberLabel { color: #b7c5dd; }
 
 /* Table status text color cues */
 QTableWidget::item[selected] {
