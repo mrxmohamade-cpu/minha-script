@@ -864,13 +864,14 @@ class AnemApp(QMainWindow):
 
         # صف إحصائيات ولوحة عمليات منظمة
         info_row = QHBoxLayout()
-        info_row.setSpacing(10)
+        info_row.setSpacing(8)
 
         self.insight_frame = QFrame()
         self.insight_frame.setObjectName("InsightFrame")
         insight_layout = QHBoxLayout(self.insight_frame)
-        insight_layout.setContentsMargins(10, 6, 10, 6)
-        insight_layout.setSpacing(10)
+        insight_layout.setContentsMargins(10, 4, 10, 4)
+        insight_layout.setSpacing(8)
+        self.insight_frame.setMaximumHeight(130)
 
         self.stat_total_card = self._create_stat_card("عدد الأعضاء", "0", "إجمالي المسجلين", accent="#38bdf8")
         self.stat_ready_card = self._create_stat_card("جاهز للحجز", "0", "أعضاء مؤهلون ولديهم تسجيل مسبق", accent="#34d399")
@@ -883,8 +884,9 @@ class AnemApp(QMainWindow):
         self.operation_panel_frame = QFrame()
         self.operation_panel_frame.setObjectName("OperationPanel")
         op_layout = QVBoxLayout(self.operation_panel_frame)
-        op_layout.setContentsMargins(12, 10, 12, 10)
-        op_layout.setSpacing(6)
+        op_layout.setContentsMargins(10, 8, 10, 8)
+        op_layout.setSpacing(4)
+        self.operation_panel_frame.setMaximumHeight(130)
 
         self.operation_current_label = QLabel("لا توجد عملية جارية")
         self.operation_current_label.setObjectName("OperationCurrent")
@@ -1011,8 +1013,10 @@ class AnemApp(QMainWindow):
         content_layout = QHBoxLayout(content_frame)
         content_layout.setContentsMargins(10, 8, 10, 8)
         content_layout.setSpacing(10)
-        content_layout.addWidget(self.table, 3)
+        content_layout.addWidget(self.table, 4)
         content_layout.addLayout(side_stack, 1)
+        content_layout.setStretch(0, 4)
+        content_layout.setStretch(1, 1)
 
         main_layout.addWidget(content_frame)
 
@@ -1065,8 +1069,8 @@ class AnemApp(QMainWindow):
         card = QFrame(self)
         card.setObjectName("StatCard")
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(10, 8, 10, 8)
-        layout.setSpacing(4)
+        layout.setContentsMargins(10, 6, 10, 6)
+        layout.setSpacing(3)
 
         title_label = QLabel(title)
         title_label.setObjectName("StatCardTitle")
@@ -1083,10 +1087,10 @@ class AnemApp(QMainWindow):
         card.value_label = value_label
         card.setStyleSheet(
             f"""
-            QFrame#StatCard {{ background: #101827; border: 1px solid #1f2a36; border-radius: 12px; }}
-            QLabel#StatCardTitle {{ color: #cfd8e3; font-weight: 600; }}
-            QLabel#StatCardValue {{ color: {accent}; font-weight: 800; font-size: 18px; }}
-            QLabel#StatCardSubtitle {{ color: #8ca0b8; }}
+            QFrame#StatCard {{ background: #0f1726; border: 1px solid #162134; border-radius: 12px; }}
+            QLabel#StatCardTitle {{ color: #a8b8cc; font-weight: 600; font-size: 9.5pt; }}
+            QLabel#StatCardValue {{ color: {accent}; font-weight: 800; font-size: 16px; }}
+            QLabel#StatCardSubtitle {{ color: #90a2ba; font-size: 9pt; }}
             """
         )
         return card
