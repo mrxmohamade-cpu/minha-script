@@ -4,6 +4,7 @@ import random
 import logging
 import os 
 import base64 
+from dataclasses import dataclass, field
 from PyQt5.QtCore import QThread, pyqtSignal, QStandardPaths 
 
 from api_client import AnemAPIClient 
@@ -62,14 +63,97 @@ def _translate_api_error(error_string, operation_name="العملية"):
         return f"تم استلام استجابة غير صالحة (ليست JSON) من الخادم أثناء {operation_name}."
     elif "eligible:false" in error_lower or "نعتذر منكم" in error_string: 
         if "نعتذر منكم! لا يمكنكم حجز موعد" in error_string:
-            return error_string
-        if operation_name == "حجز الموعد" and "\"Eligible\":false" in error_string and "\"serviceUp\":true" in error_string :
-             return "نعتذر منكم! لا يمكنكم حجز موعد للاستفادة من منحة البطالة لعدم استيفائك لأحد شروط الأهلية اللازمة."
-        return f"المستخدم غير مؤهل لـ {operation_name} حسب شروط المنصة."
-    
+            return "غير مؤهل للحجز."
+        return str(error_string)
+    if operation_name == "حجز الموعد" and "\"eligible\":false" in error_lower and "\"serviceup\":true" in error_lower:
+        return "نعتذر منكم! لا يمكنكم حجز موعد للاستفادة من منحة البطالة لعدم استيفائك لأحد شروط الأهلية اللازمة."
+
     max_len = 70
-    snippet = error_string[:max_len] + "..." if len(error_string) > max_len else error_string
+    snippet = str(error_string)
+    snippet = snippet[:max_len] + "..." if len(snippet) > max_len else snippet
     return f"فشل في {operation_name}: {snippet}"
+
+
+class ResultType:
+    NO_DATES = "NO_DATES"
+    RATE_LIMIT = "RATE_LIMIT"
+    NETWORK = "NETWORK"
+    HAS_RDV = "HAS_RDV"
+    INVALID = "INVALID"
+    HAS_DATES = "HAS_DATES"
+    UNKNOWN = "UNKNOWN"
+
+
+@dataclass
+class MemberState:
+    next_allowed_check_at: float = 0.0
+    last_result_type: str = ResultType.UNKNOWN
+    consecutive_failures: int = 0
+    cooldown_level: int = 0
+    priority_score: float = 0.0
+    last_round_processed: int = -1
+
+
+class SmartScheduler:
+    def __init__(self, global_min_interval=1.5):
+        self.global_min_interval = global_min_interval
+        self.global_next_allowed_at = 0.0
+        self.round_id = 0
+        self.member_states = {}
+
+    def start_round(self):
+        self.round_id += 1
+
+    def _state_for(self, member_key):
+        if member_key not in self.member_states:
+            self.member_states[member_key] = MemberState()
+        return self.member_states[member_key]
+
+    def can_process_member(self, member_key, now_ts):
+        state = self._state_for(member_key)
+        if state.last_round_processed == self.round_id:
+            return False
+        if now_ts < state.next_allowed_check_at:
+            return False
+        if now_ts < self.global_next_allowed_at:
+            return False
+        return True
+
+    def next_wait_seconds(self, member_key, now_ts):
+        state = self._state_for(member_key)
+        return max(0, int(max(state.next_allowed_check_at, self.global_next_allowed_at) - now_ts))
+
+    def record_result(self, member_key, result_type, now_ts):
+        state = self._state_for(member_key)
+        state.last_round_processed = self.round_id
+        state.last_result_type = result_type
+
+        jitter = random.uniform(3, 10)
+        cooldown_seconds = 0
+
+        if result_type == ResultType.NO_DATES:
+            cooldown_seconds = (2 * 60 * 60) + random.uniform(5 * 60, 20 * 60)
+            state.cooldown_level = max(state.cooldown_level - 1, 0)
+        elif result_type == ResultType.RATE_LIMIT:
+            state.cooldown_level = min(state.cooldown_level + 1, 6)
+            cooldown_seconds = (60 * (2 ** state.cooldown_level)) + random.uniform(20, 60)
+            self.global_next_allowed_at = max(self.global_next_allowed_at, now_ts + cooldown_seconds)
+        elif result_type == ResultType.NETWORK:
+            state.cooldown_level = min(state.cooldown_level + 1, 4)
+            cooldown_seconds = (5 * 60 * (state.cooldown_level + 1)) + random.uniform(30, 120)
+        elif result_type == ResultType.HAS_RDV:
+            cooldown_seconds = 12 * 60 * 60
+        elif result_type == ResultType.INVALID:
+            cooldown_seconds = 24 * 60 * 60
+        elif result_type == ResultType.HAS_DATES:
+            cooldown_seconds = (5 * 60) + random.uniform(30, 120)
+            state.cooldown_level = max(state.cooldown_level - 1, 0)
+        else:
+            cooldown_seconds = 10 * 60
+
+        state.next_allowed_check_at = now_ts + cooldown_seconds + jitter
+        self.global_next_allowed_at = max(self.global_next_allowed_at, now_ts + self.global_min_interval)
+        return cooldown_seconds
 
 
 class FetchInitialInfoThread(QThread):
@@ -265,6 +349,7 @@ class MonitoringThread(QThread):
         self.current_member_index_to_process = 0 
         self.consecutive_network_error_trigger_count = 0 
         self.initial_scan_completed = False 
+        self.scheduler = SmartScheduler(global_min_interval=max(1.0, float(self.min_member_delay)))
 
     def _apply_settings(self):
         self.interval_ms = self.settings.get(SETTING_MONITORING_INTERVAL, DEFAULT_SETTINGS[SETTING_MONITORING_INTERVAL]) * 60 * 1000
@@ -334,6 +419,7 @@ class MonitoringThread(QThread):
             if self.is_running and not self.initial_scan_completed and not self.is_connection_lost_mode:
                 logger.info("بدء الفحص الأولي لجميع الأعضاء عند بدء المراقبة...")
                 self._emit_global_log("جاري الفحص الأولي لجميع الأعضاء...")
+                self.scheduler.start_round()
                 
                 initial_scan_members_list = list(self.members_list_ref) 
 
@@ -355,6 +441,11 @@ class MonitoringThread(QThread):
 
                         member_display_name = self._get_member_display_name_with_index_from_thread(member_to_process, initial_scan_idx)
 
+                        now_ts = time.time()
+                        if not self.scheduler.can_process_member(self._get_member_key(member_to_process), now_ts):
+                            self._scheduler_skip_member(initial_scan_idx, member_to_process)
+                            continue
+
                         if member_to_process.is_processing:
                             logger.debug(f"الفحص الأولي: تجاوز العضو {member_display_name} لأنه قيد المعالجة.")
                             continue
@@ -371,6 +462,7 @@ class MonitoringThread(QThread):
                             logger.info(f"الفحص الأولي: تجاوز العضو {member_display_name} لأنه في حالة: {member_to_process.status}.")
                             self.update_member_gui_signal.emit(initial_scan_idx, member_to_process.status, member_to_process.last_activity_detail, get_icon_name_for_status(member_to_process.status))
                             self.member_being_processed_signal.emit(initial_scan_idx, False)
+                            self.scheduler.record_result(self._get_member_key(member_to_process), ResultType.INVALID, time.time())
                             if self.is_running: time.sleep(SHORT_SKIP_DELAY_SECONDS)
                             continue
 
@@ -429,6 +521,9 @@ class MonitoringThread(QThread):
                                 member_to_process.consecutive_failures = 0
                                 if not member_had_api_error_this_cycle : self.consecutive_network_error_trigger_count = 0
 
+                            result_type = self._classify_result(member_to_process, member_had_api_error_this_cycle)
+                            self.scheduler.record_result(self._get_member_key(member_to_process), result_type, time.time())
+
 
                         except Exception as e:
                             if not self.is_running: break
@@ -438,6 +533,7 @@ class MonitoringThread(QThread):
                             member_to_process.consecutive_failures +=1
                             self.consecutive_network_error_trigger_count +=1
                             self.update_member_gui_signal.emit(initial_scan_idx, member_to_process.status, member_to_process.last_activity_detail, "SP_MessageBoxCritical")
+                            self.scheduler.record_result(self._get_member_key(member_to_process), ResultType.NETWORK, time.time())
                         finally:
                             if self.is_running:
                                 self.member_being_processed_signal.emit(initial_scan_idx, False)
@@ -478,6 +574,7 @@ class MonitoringThread(QThread):
 
             logger.info(f"بدء دورة مراقبة دورية... (من الفهرس {self.current_member_index_to_process}) عدد الأعضاء الكلي: {len(current_members_snapshot_indices)}")
             self._emit_global_log(f"بدء دورة مراقبة دورية... ({time.strftime('%H:%M:%S')})")
+            self.scheduler.start_round()
 
             processed_in_this_cycle = False 
 
@@ -499,6 +596,10 @@ class MonitoringThread(QThread):
                 member_to_process = self.members_list_ref[main_list_idx]
                 member_display_name_periodic = self._get_member_display_name_with_index_from_thread(member_to_process, main_list_idx)
 
+                now_ts = time.time()
+                if not self.scheduler.can_process_member(self._get_member_key(member_to_process), now_ts):
+                    self._scheduler_skip_member(main_list_idx, member_to_process)
+                    continue
 
                 if member_to_process.is_processing: 
                     logger.debug(f"المراقبة الدورية: تجاوز العضو {member_display_name_periodic} لأنه قيد المعالجة.")
@@ -516,6 +617,7 @@ class MonitoringThread(QThread):
                     logger.info(f"المراقبة الدورية: تجاوز العضو {member_display_name_periodic} لأنه في حالة: {member_to_process.status}.")
                     self.update_member_gui_signal.emit(main_list_idx, member_to_process.status, member_to_process.last_activity_detail, get_icon_name_for_status(member_to_process.status))
                     self.member_being_processed_signal.emit(main_list_idx, False) 
+                    self.scheduler.record_result(self._get_member_key(member_to_process), ResultType.INVALID, time.time())
                     if self.is_running: time.sleep(SHORT_SKIP_DELAY_SECONDS)
                     self.current_member_index_to_process = (main_list_idx + 1) % len(self.members_list_ref) if self.members_list_ref else 0
                     continue 
@@ -578,6 +680,9 @@ class MonitoringThread(QThread):
                         member_to_process.consecutive_failures = 0
                         self.consecutive_network_error_trigger_count = 0 
 
+                    result_type = self._classify_result(member_to_process, member_had_api_error_this_cycle)
+                    self.scheduler.record_result(self._get_member_key(member_to_process), result_type, time.time())
+
                 except Exception as e:
                     if not self.is_running: break
                     logger.exception(f"المراقبة الدورية: خطأ غير متوقع للعضو {member_display_name_periodic}: {e}")
@@ -586,6 +691,7 @@ class MonitoringThread(QThread):
                     member_to_process.consecutive_failures +=1 
                     self.consecutive_network_error_trigger_count +=1 
                     self.update_member_gui_signal.emit(main_list_idx, member_to_process.status, member_to_process.last_activity_detail, "SP_MessageBoxCritical")
+                    self.scheduler.record_result(self._get_member_key(member_to_process), ResultType.NETWORK, time.time())
                 finally:
                     if self.is_running:
                         self.member_being_processed_signal.emit(main_list_idx, False) 
@@ -635,6 +741,40 @@ class MonitoringThread(QThread):
         logger.info(f"تحديث حالة العضو {member_display_name}: {new_status} - التفاصيل: {member_obj_being_updated.last_activity_detail}")
         if self.is_running: 
             self.update_member_gui_signal.emit(main_list_idx, member_obj_being_updated.status, member_obj_being_updated.last_activity_detail, icon_name)
+
+    def _get_member_key(self, member_obj):
+        return member_obj.nin or member_obj.wassit_no or str(id(member_obj))
+
+    def _scheduler_skip_member(self, main_list_idx, member_obj):
+        now_ts = time.time()
+        wait_seconds = self.scheduler.next_wait_seconds(self._get_member_key(member_obj), now_ts)
+        wait_minutes = max(1, int(wait_seconds / 60)) if wait_seconds else 1
+        detail_text = f"تبريد {wait_minutes} د"
+        self._update_member_and_emit(
+            main_list_idx,
+            member_obj,
+            member_obj.status,
+            detail_text,
+            get_icon_name_for_status(member_obj.status)
+        )
+
+    def _classify_result(self, member_obj, api_error_occurred):
+        detail = (member_obj.last_activity_detail or "").lower()
+        status = member_obj.status
+
+        if "429" in detail or "طلبات كثيرة" in detail:
+            return ResultType.RATE_LIMIT
+        if status in ["لا توجد مواعيد"]:
+            return ResultType.NO_DATES
+        if status in ["تم الحجز", "لديه موعد مسبق", "مكتمل"]:
+            return ResultType.HAS_RDV
+        if status in ["غير مؤهل للحجز", "بيانات الإدخال خاطئة", "غير مؤهل مبدئيًا"]:
+            return ResultType.INVALID
+        if status in ["جاري البحث عن مواعيد...", "جاري حجز الموعد..."] and not api_error_occurred:
+            return ResultType.HAS_DATES
+        if api_error_occurred or status in ["فشل التحقق", "فشل جلب المعلومات", "فشل جلب التواريخ", "فشل الحجز"]:
+            return ResultType.NETWORK
+        return ResultType.UNKNOWN
 
     def process_validation(self, main_list_idx, member_obj): 
         if not self.is_running: return False, False
