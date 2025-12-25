@@ -182,15 +182,16 @@ class ToastNotification(QWidget):
 class NotificationManager(QObject):
     _instance = None
 
-    def __new__(cls, parent=None):
+    @classmethod
+    def instance(cls, parent=None):
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
+            cls._instance = cls(parent)
         return cls._instance
 
     def __init__(self, parent=None):
+        super().__init__(parent)
         if getattr(self, "_initialized", False):
             return
-        super().__init__(parent)
         self._initialized = True
         self._queue = []
         self._current_toast = None

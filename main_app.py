@@ -1824,7 +1824,7 @@ class AnemApp(QMainWindow):
             logger.debug(f"Toast for message_id '{message_id}' already shown. Skipping.")
             return
 
-        NotificationManager(self).enqueue(
+        NotificationManager.instance(self).enqueue(
             self,
             display_message,
             title=display_title,
