@@ -740,7 +740,7 @@ class MonitoringThread(QThread):
         wait_minutes = max(1, int(wait_seconds / 60)) if wait_seconds else 1
         detail_text = f"تبريد {wait_minutes} د"
         state = self.robot.scheduler.state_for(member_key)
-        if now_ts - state.last_ui_update_at < 600:
+        if now_ts - state.last_ui_update_at < 600 or state.monitoring_mode != "ACTIVE":
             return
         state.last_ui_update_at = now_ts
         self._update_member_and_emit(
@@ -760,6 +760,13 @@ class MonitoringThread(QThread):
         next_check_text = time.strftime("%H:%M:%S", time.localtime(next_check_ts)) if next_check_ts else "-"
         last_alert = self.robot.last_alert()
         self.robot_status_signal.emit(self.robot.scheduler.mode, next_check_text, last_alert, self.robot.round_status())
+        excluded = self.robot.scheduler.excluded_summary()
+        excluded_total = excluded.get("DISABLED", 0) + excluded.get("SKIP_LONG", 0)
+        if excluded_total:
+            self._emit_global_log(
+                f"تم استبعاد {excluded_total} أعضاء (مكتمل/مستفيد/غير مؤهل).",
+                is_general=True,
+            )
 
     def _record_robot_result(self, member_obj, result_type):
         member_key = self._get_member_key(member_obj)
@@ -769,6 +776,12 @@ class MonitoringThread(QThread):
             detail=(member_obj.last_activity_detail or "")[:60],
         )
         explanation = self.robot.explain_result(result_type, cooldown_seconds)
+        state = self.robot.scheduler.state_for(member_key)
+        if state.monitoring_mode != "ACTIVE":
+            member_obj.set_activity_detail(
+                "مستبعد من المراقبة: مكتمل/مستفيد/غير مؤهل",
+                is_error=False,
+            )
         if result_type in [ResultType.RATE_LIMIT, ResultType.NETWORK_ERROR, ResultType.HAS_DATES, ResultType.PROTECTED_STEP, ResultType.SERVER_ERROR]:
             self.robot_alert_signal.emit(explanation)
         if result_type == ResultType.PROTECTED_STEP:

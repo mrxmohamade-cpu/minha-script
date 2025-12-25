@@ -19,6 +19,8 @@ class MemberState:
     last_change_signature: str = ""
     last_round_processed: int = -1
     last_ui_update_at: float = 0.0
+    monitoring_mode: str = "ACTIVE"  # ACTIVE | SKIP_LONG | DISABLED
+    final_status: str = "UNKNOWN"
 
 
 class RateLimiter:
@@ -66,6 +68,8 @@ class SmartScheduler:
 
     def can_process(self, member_id, now_ts):
         state = self.state_for(member_id)
+        if state.monitoring_mode != "ACTIVE":
+            return False
         if self.is_paused(now_ts):
             return False
         if state.last_round_processed == self.round_id:
@@ -77,12 +81,15 @@ class SmartScheduler:
         return True
 
     def next_wait_seconds(self, now_ts):
-        if not self.member_states:
+        active_states = [
+            state for state in self.member_states.values() if state.monitoring_mode == "ACTIVE"
+        ]
+        if not active_states:
             return 0
         if self.is_paused(now_ts):
             return max(0, int(self.pause_until - now_ts))
         earliest = min(
-            (state.next_allowed_check_at for state in self.member_states.values() if state.next_allowed_check_at),
+            (state.next_allowed_check_at for state in active_states if state.next_allowed_check_at),
             default=0,
         )
         if earliest <= 0:
@@ -96,6 +103,7 @@ class SmartScheduler:
         state.last_result_type = result_type
         state.last_check_at = now_ts
         state.last_http_status = http_status
+        state.final_status = result_type
 
         cooldown = 0
         jitter = random.uniform(0.15, 0.25)
@@ -131,18 +139,22 @@ class SmartScheduler:
         elif result_type == ResultType.HAS_RDV:
             cooldown = self.settings["freeze_has_rdv_days"] * 24 * 60 * 60
             self.mode = "sleep"
+            state.monitoring_mode = "SKIP_LONG"
         elif result_type == ResultType.NEEDS_PREINSCRIPTION:
             cooldown = random.uniform(3 * 24 * 60 * 60, 7 * 24 * 60 * 60)
             self.mode = "sleep"
+            state.monitoring_mode = "SKIP_LONG"
         elif result_type == ResultType.INVALID:
             cooldown = 30 * 24 * 60 * 60
             self.mode = "sleep"
+            state.monitoring_mode = "DISABLED"
         elif result_type == ResultType.SERVER_ERROR:
             cooldown = random.uniform(20 * 60, 60 * 60)
             self.mode = "sleep"
         elif result_type == ResultType.PROTECTED_STEP:
             cooldown = 24 * 60 * 60
             self.mode = "paused"
+            state.monitoring_mode = "DISABLED"
         else:
             cooldown = random.uniform(30 * 60, 60 * 60)
             self.mode = "sleep"
@@ -154,3 +166,10 @@ class SmartScheduler:
     def update_mode(self):
         if self.mode == "burst" and time.time() > self.burst_until:
             self.mode = "sleep"
+
+    def excluded_summary(self):
+        excluded = {"SKIP_LONG": 0, "DISABLED": 0}
+        for state in self.member_states.values():
+            if state.monitoring_mode in excluded:
+                excluded[state.monitoring_mode] += 1
+        return excluded

@@ -30,10 +30,18 @@ class RobotRepository:
                     cooldown_level INTEGER,
                     priority_score REAL,
                     last_change_signature TEXT,
+                    monitoring_mode TEXT,
+                    final_status TEXT,
                     updated_at INTEGER
                 )
                 """
             )
+            cur.execute("PRAGMA table_info(member_state)")
+            columns = {row[1] for row in cur.fetchall()}
+            if "monitoring_mode" not in columns:
+                cur.execute("ALTER TABLE member_state ADD COLUMN monitoring_mode TEXT")
+            if "final_status" not in columns:
+                cur.execute("ALTER TABLE member_state ADD COLUMN final_status TEXT")
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS checks_log (
@@ -69,7 +77,7 @@ class RobotRepository:
                 """
                 SELECT member_id, last_check_at, next_allowed_check_at, consecutive_failures,
                        last_result_type, last_http_status, cooldown_level, priority_score,
-                       last_change_signature
+                       last_change_signature, monitoring_mode, final_status
                 FROM member_state
                 """
             )
@@ -86,6 +94,8 @@ class RobotRepository:
                     cooldown_level=row[6] or 0,
                     priority_score=row[7] or 0.0,
                     last_change_signature=row[8] or "",
+                    monitoring_mode=row[9] or "ACTIVE",
+                    final_status=row[10] or ResultType.UNKNOWN,
                 )
             return states
 
@@ -96,8 +106,8 @@ class RobotRepository:
                 INSERT INTO member_state (
                     member_id, last_check_at, next_allowed_check_at, consecutive_failures,
                     last_result_type, last_http_status, cooldown_level, priority_score,
-                    last_change_signature, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    last_change_signature, monitoring_mode, final_status, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(member_id) DO UPDATE SET
                     last_check_at=excluded.last_check_at,
                     next_allowed_check_at=excluded.next_allowed_check_at,
@@ -107,6 +117,8 @@ class RobotRepository:
                     cooldown_level=excluded.cooldown_level,
                     priority_score=excluded.priority_score,
                     last_change_signature=excluded.last_change_signature,
+                    monitoring_mode=excluded.monitoring_mode,
+                    final_status=excluded.final_status,
                     updated_at=excluded.updated_at
                 """,
                 (
@@ -119,6 +131,8 @@ class RobotRepository:
                     state.cooldown_level,
                     state.priority_score,
                     state.last_change_signature,
+                    state.monitoring_mode,
+                    state.final_status,
                     int(time.time()),
                 ),
             )

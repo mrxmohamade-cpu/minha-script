@@ -33,7 +33,7 @@ class ResultClassifier:
             return ResultType.NETWORK_ERROR
         if status in ["لا توجد مواعيد", "تم التحقق", "تم جلب المعلومات", "جاري جلب الاسم..."]:
             return ResultType.NO_DATES
-        if status in ["تم الحجز", "لديه موعد مسبق", "مكتمل"]:
+        if status in ["تم الحجز", "لديه موعد مسبق", "مكتمل", "مستفيد حاليًا من المنحة"]:
             return ResultType.HAS_RDV
         if status in ["يتطلب تسجيل مسبق"]:
             return ResultType.NEEDS_PREINSCRIPTION
