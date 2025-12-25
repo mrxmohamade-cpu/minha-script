@@ -720,58 +720,39 @@ class ActivationDialog(QDialog):
         self.setWindowTitle("تفعيل البرنامج")
         self.setModal(True)
         self.setLayoutDirection(Qt.RightToLeft)
-        self.setMinimumWidth(520)
+        self.setMinimumWidth(540)
         self.setObjectName("ActivationDialog")
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint) 
 
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(24, 24, 24, 24)
-        main_layout.setSpacing(0)
+        main_layout.setContentsMargins(22, 22, 22, 22)
+        main_layout.setSpacing(16)
 
         card_frame = QFrame(self)
         card_frame.setObjectName("ActivationCard")
-        card_shadow = QGraphicsDropShadowEffect(self)
-        card_shadow.setBlurRadius(18)
-        card_shadow.setColor(QColor(0, 0, 0, 90))
-        card_shadow.setOffset(0, 6)
-        card_frame.setGraphicsEffect(card_shadow)
-
         card_layout = QVBoxLayout(card_frame)
-        card_layout.setContentsMargins(24, 22, 24, 22)
-        card_layout.setSpacing(16)
+        card_layout.setContentsMargins(26, 24, 26, 24)
+        card_layout.setSpacing(18)
 
-        header_frame = QFrame(self)
-        header_frame.setObjectName("ActivationHeaderFrame")
-        header_layout = QHBoxLayout(header_frame)
-        header_layout.setContentsMargins(0, 0, 0, 0)
-        header_layout.setSpacing(16)
+        hero_frame = QFrame(self)
+        hero_frame.setObjectName("ActivationHeroFrame")
+        hero_layout = QVBoxLayout(hero_frame)
+        hero_layout.setContentsMargins(16, 14, 16, 14)
+        hero_layout.setSpacing(6)
 
-        self.icon_label = QLabel(self)
-        key_icon_pixmap = QPixmap(self.style().standardIcon(QStyle.SP_MessageBoxInformation).pixmap(56, 56))
-        self.icon_label.setPixmap(key_icon_pixmap)
-        self.icon_label.setAlignment(Qt.AlignCenter)
-        self.icon_label.setObjectName("ActivationIcon")
-        header_layout.addWidget(self.icon_label)
-
-        title_stack = QVBoxLayout()
-        title_stack.setSpacing(4)
-
-        title_font = QFont("Tajawal Bold", 19)
         self.title_label = QLabel("تفعيل البرنامج", self)
-        self.title_label.setFont(title_font)
         self.title_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.title_label.setObjectName("ActivationTitleLabel")
-        title_stack.addWidget(self.title_label)
+        hero_layout.addWidget(self.title_label)
 
-        self.subtitle_label = QLabel("ابدأ رحلتك بثقة، أدخل الكود لتفعيل النسخة الاحترافية.", self)
+        self.subtitle_label = QLabel("واجهة تفعيل جديدة بتجربة هادئة ومركّزة، أدخل الكود لتأكيد الاشتراك.", self)
         self.subtitle_label.setWordWrap(True)
         self.subtitle_label.setObjectName("ActivationSubtitleLabel")
-        title_stack.addWidget(self.subtitle_label)
+        hero_layout.addWidget(self.subtitle_label)
 
-        header_layout.addLayout(title_stack, 1)
-        card_layout.addWidget(header_frame)
+        card_layout.addWidget(hero_frame)
 
-        self.instruction_label = QLabel("الرجاء إدخال كود التفعيل الخاص بك للمتابعة.", self)
+        self.instruction_label = QLabel("كود التفعيل", self)
         self.instruction_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.instruction_label.setWordWrap(True)
         self.instruction_label.setObjectName("ActivationInstructionLabel")
@@ -780,23 +761,18 @@ class ActivationDialog(QDialog):
         input_frame = QFrame(self)
         input_frame.setObjectName("ActivationInputFrame")
         input_layout = QHBoxLayout(input_frame)
-        input_layout.setContentsMargins(12, 6, 12, 6)
+        input_layout.setContentsMargins(14, 8, 14, 8)
         input_layout.setSpacing(10)
-
-        self.input_icon = QLabel(self)
-        self.input_icon.setPixmap(self.style().standardIcon(QStyle.SP_FileDialogDetailedView).pixmap(20, 20))
-        self.input_icon.setObjectName("ActivationInputIcon")
-        input_layout.addWidget(self.input_icon)
 
         self.activation_code_input = QLineEdit(self)
         self.activation_code_input.setPlaceholderText("أدخل كود التفعيل هنا")
         self.activation_code_input.setAlignment(Qt.AlignCenter)
-        self.activation_code_input.setMinimumHeight(42)
+        self.activation_code_input.setMinimumHeight(44)
         self.activation_code_input.setObjectName("ActivationCodeInput")
         input_layout.addWidget(self.activation_code_input, 1)
         card_layout.addWidget(input_frame)
 
-        self.helper_label = QLabel("يمكنك نسخ الكود ولصقه مباشرة، وتأكد من الاتصال بالإنترنت.", self)
+        self.helper_label = QLabel("تأكد من اتصالك بالإنترنت أثناء التفعيل. يمكنك نسخ ولصق الكود مباشرة.", self)
         self.helper_label.setWordWrap(True)
         self.helper_label.setObjectName("ActivationHelperLabel")
         card_layout.addWidget(self.helper_label)
@@ -804,8 +780,8 @@ class ActivationDialog(QDialog):
         self.status_message_area = QTextEdit(self)
         self.status_message_area.setReadOnly(True)
         self.status_message_area.setObjectName("ActivationStatusMessageArea")
-        self.status_message_area.setMinimumHeight(72)
-        self.status_message_area.setMaximumHeight(140)
+        self.status_message_area.setMinimumHeight(78)
+        self.status_message_area.setMaximumHeight(150)
         self.status_message_area.setAlignment(Qt.AlignCenter)
         self.status_message_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         card_layout.addWidget(self.status_message_area)
@@ -823,13 +799,13 @@ class ActivationDialog(QDialog):
         self.cancel_button = QPushButton("إلغاء", self)
         self.cancel_button.setIcon(self.style().standardIcon(QStyle.SP_DialogCancelButton))
         self.cancel_button.setObjectName("ActivationCancelButton")
-        self.cancel_button.setFixedHeight(42)
+        self.cancel_button.setFixedHeight(44)
         self.buttons_layout.addWidget(self.cancel_button)
 
         self.activate_button = QPushButton("تفعيل", self)
         self.activate_button.setIcon(self.style().standardIcon(QStyle.SP_DialogApplyButton))
         self.activate_button.setObjectName("ActivationActivateButton")
-        self.activate_button.setFixedHeight(42)
+        self.activate_button.setFixedHeight(44)
         self.buttons_layout.addWidget(self.activate_button)
 
         card_layout.addLayout(self.buttons_layout)
@@ -843,109 +819,98 @@ class ActivationDialog(QDialog):
     def _apply_styles(self):
         self.setStyleSheet("""
             QDialog#ActivationDialog {
-                background-color: #1E222D;
+                background-color: #171B24;
             }
             QFrame#ActivationCard {
-                background-color: #262B36;
-                border-radius: 16px;
-                border: 1px solid #303647;
+                background-color: #1F2430;
+                border-radius: 18px;
+                border: 1px solid #2B3242;
             }
-            QFrame#ActivationHeaderFrame {
-                background: qlineargradient(
-                    x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #2A3142, stop:1 #2E3648
-                );
-                border-radius: 12px;
-                padding: 12px;
-            }
-            QLabel#ActivationIcon {
-                background-color: rgba(255, 255, 255, 0.06);
-                border-radius: 12px;
-                padding: 8px;
+            QFrame#ActivationHeroFrame {
+                background-color: #222836;
+                border-radius: 14px;
+                border: 1px solid #2E3648;
             }
             QLabel#ActivationTitleLabel {
-                color: #F5F7FB;
+                color: #F6F8FD;
+                font-size: 18pt;
                 font-family: "Tajawal Bold";
             }
             QLabel#ActivationSubtitleLabel {
-                color: #B8C0D4;
-                font-size: 9.5pt;
-                font-family: "Tajawal Regular";
+                color: #B4BED4;
+                font-size: 10pt;
+                font-family: "Tajawal Medium";
             }
             QLabel#ActivationInstructionLabel {
-                color: #D6DBE8;
-                font-size: 10.5pt;
-                font-family: "Tajawal Medium";
-                padding-top: 4px;
+                color: #DCE1EE;
+                font-size: 11pt;
+                font-family: "Tajawal Bold";
             }
             QFrame#ActivationInputFrame {
-                background-color: #2A3142;
-                border: 1px solid #343C52;
-                border-radius: 10px;
-            }
-            QLabel#ActivationInputIcon {
-                color: #9AA7C1;
+                background-color: #252C3B;
+                border: 1px solid #313A4F;
+                border-radius: 12px;
             }
             QLineEdit#ActivationCodeInput:focus {
                 border: none;
             }
             QLineEdit#ActivationCodeInput {
-                font-size: 13pt;
+                font-size: 14pt;
                 font-family: "Tajawal Medium";
                 background-color: transparent;
                 color: #F3F5FB;
                 border: none;
-                padding: 6px 8px;
+                padding: 6px 10px;
             }
             QLabel#ActivationHelperLabel {
-                color: #9AA7C1;
-                font-size: 9pt;
+                color: #9FAAC2;
+                font-size: 9.5pt;
                 font-family: "Tajawal Regular";
             }
             QTextEdit#ActivationStatusMessageArea {
                 font-family: "Tajawal Regular";
                 font-size: 10pt;
-                border: 1px solid #343C52;
-                border-radius: 10px;
-                background-color: #232836;
-                color: #CFD6E6;
+                border: 1px solid #2C3446;
+                border-radius: 12px;
+                background-color: #1C212E;
+                color: #C7CFDF;
                 padding: 12px;
             }
             QFrame#ActivationLineSeparator {
-                background-color: #343C52;
+                background-color: #2C3446;
                 max-height: 1px;
             }
             QPushButton#ActivationActivateButton {
-                background-color: #5B8CFF;
-                color: #F5F7FB;
+                background-color: #4C7BFF;
+                color: #F7F9FF;
                 font-family: "Tajawal Bold";
-                padding: 10px 24px;
-                border-radius: 10px;
+                padding: 10px 26px;
+                border-radius: 12px;
                 border: none;
             }
             QPushButton#ActivationActivateButton:hover {
-                background-color: #6A97FF;
+                background-color: #5A86FF;
             }
             QPushButton#ActivationActivateButton:pressed {
-                background-color: #4C7DEB;
+                background-color: #3F6DEB;
             }
             QPushButton#ActivationActivateButton:disabled {
-                background-color: #32394B;
-                color: #6B758E;
+                background-color: #2C3446;
+                color: #6D7892;
             }
             QPushButton#ActivationCancelButton {
-                background-color: #2E3547;
-                color: #E2E7F3;
+                background-color: #232A3A;
+                color: #E1E6F2;
                 font-family: "Tajawal Medium";
-                padding: 10px 22px;
-                border-radius: 10px;
-                border: 1px solid #3B4358;
+                padding: 10px 24px;
+                border-radius: 12px;
+                border: 1px solid #333C52;
             }
             QPushButton#ActivationCancelButton:hover {
-                background-color: #394257;
+                background-color: #2D3548;
             }
             QPushButton#ActivationCancelButton:pressed {
-                background-color: #2A3142;
+                background-color: #1E2433;
             }
         """)
 
