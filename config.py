@@ -90,6 +90,10 @@ SETTING_MONITORING_INTERVAL = "monitoring_interval"
 SETTING_BACKOFF_429 = "backoff_429"
 SETTING_BACKOFF_GENERAL = "backoff_general"
 SETTING_REQUEST_TIMEOUT = "request_timeout"
+SETTING_ROBOT_ENABLED = "robot_enabled"
+SETTING_ROBOT_BASE_INTERVAL = "robot_base_interval_sec"
+SETTING_ROBOT_BURST_MIN = "robot_burst_duration_min"
+SETTING_ROBOT_FREEZE_HAS_RDV_DAYS = "robot_freeze_has_rdv_days"
 
 # --- Request pacing configuration (per endpoint) ---
 # هذه القيم تضيف حداً أدنى للفاصل الزمني بين الطلبات الحساسة لتجنب الحظر
@@ -111,7 +115,11 @@ DEFAULT_SETTINGS = {
     SETTING_MONITORING_INTERVAL: 1,
     SETTING_BACKOFF_429: 60,
     SETTING_BACKOFF_GENERAL: 5,
-    SETTING_REQUEST_TIMEOUT: 30
+    SETTING_REQUEST_TIMEOUT: 30,
+    SETTING_ROBOT_ENABLED: True,
+    SETTING_ROBOT_BASE_INTERVAL: 8,
+    SETTING_ROBOT_BURST_MIN: 25,
+    SETTING_ROBOT_FREEZE_HAS_RDV_DAYS: 7,
 }
 
 # --- Retry Mechanism Constants (used by AnemAPIClient) ---

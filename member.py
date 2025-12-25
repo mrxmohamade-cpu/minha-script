@@ -29,6 +29,7 @@ class Member:
         
         self.have_allocation = False 
         self.allocation_details = {} 
+        self.last_available_dates_data = None
 
 
     def get_full_name_ar(self):

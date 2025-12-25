@@ -9,18 +9,12 @@ from PyQt5.QtCore import QThread, pyqtSignal, QStandardPaths
 from api_client import AnemAPIClient 
 from member import Member 
 from utils import get_icon_name_for_status 
-from robot_engine import (
-    HarClient,
-    ResultClassifier,
-    SmartScheduler,
-    ResultType,
-    RobotRepository,
-    explain_result,
-)
+from robot import ResultType, RobotController
 from config import (
     SETTING_MIN_MEMBER_DELAY, SETTING_MAX_MEMBER_DELAY,
     SETTING_MONITORING_INTERVAL, SETTING_BACKOFF_429,
-    SETTING_BACKOFF_GENERAL, SETTING_REQUEST_TIMEOUT, DEFAULT_SETTINGS
+    SETTING_BACKOFF_GENERAL, SETTING_REQUEST_TIMEOUT, DEFAULT_SETTINGS,
+    SETTING_ROBOT_ENABLED,
 )
 
 logger = logging.getLogger(__name__)
@@ -278,28 +272,24 @@ class MonitoringThread(QThread):
         self.current_member_index_to_process = 0 
         self.consecutive_network_error_trigger_count = 0 
         self.initial_scan_completed = False 
-        self.scheduler = SmartScheduler(global_min_interval=max(1.0, float(self.min_member_delay)))
-        self.result_classifier = ResultClassifier()
-        self.har_client = HarClient(self.api_client)
-        robot_db_path = os.path.join(
-            QStandardPaths.writableLocation(QStandardPaths.AppDataLocation),
-            "robot_state.db"
-        )
-        os.makedirs(os.path.dirname(robot_db_path), exist_ok=True)
-        self.robot_repo = RobotRepository(robot_db_path)
-        self.scheduler.member_states = self.robot_repo.load_member_states()
 
     def _apply_settings(self):
         self.interval_ms = self.settings.get(SETTING_MONITORING_INTERVAL, DEFAULT_SETTINGS[SETTING_MONITORING_INTERVAL]) * 60 * 1000
         self.min_member_delay = self.settings.get(SETTING_MIN_MEMBER_DELAY, DEFAULT_SETTINGS[SETTING_MIN_MEMBER_DELAY])
         self.max_member_delay = self.settings.get(SETTING_MAX_MEMBER_DELAY, DEFAULT_SETTINGS[SETTING_MAX_MEMBER_DELAY])
+        self.robot_enabled = self.settings.get(SETTING_ROBOT_ENABLED, True)
         
         self.api_client = AnemAPIClient(
             initial_backoff_general=self.settings.get(SETTING_BACKOFF_GENERAL, DEFAULT_SETTINGS[SETTING_BACKOFF_GENERAL]),
             initial_backoff_429=self.settings.get(SETTING_BACKOFF_429, DEFAULT_SETTINGS[SETTING_BACKOFF_429]),
             request_timeout=self.settings.get(SETTING_REQUEST_TIMEOUT, DEFAULT_SETTINGS[SETTING_REQUEST_TIMEOUT])
         )
-        self.har_client = HarClient(self.api_client)
+        robot_settings = {
+            "base_global_interval_sec": max(6.0, float(self.settings.get("robot_base_interval_sec", 8))),
+            "burst_duration_min": int(self.settings.get("robot_burst_duration_min", 25)),
+            "freeze_has_rdv_days": int(self.settings.get("robot_freeze_has_rdv_days", 7)),
+        }
+        self.robot = RobotController(self.api_client, robot_settings)
         logger.info(f"MonitoringThread settings applied: Interval={self.interval_ms/60000:.1f}min, MemberDelay=[{self.min_member_delay}-{self.max_member_delay}]s")
 
     def _emit_global_log(self, message, is_general=True, member_obj=None, member_idx=-1):
@@ -359,7 +349,7 @@ class MonitoringThread(QThread):
             if self.is_running and not self.initial_scan_completed and not self.is_connection_lost_mode:
                 logger.info("بدء الفحص الأولي لجميع الأعضاء عند بدء المراقبة...")
                 self._emit_global_log("جاري الفحص الأولي لجميع الأعضاء...")
-                self.scheduler.start_round()
+                self.robot.start_round()
                 
                 initial_scan_members_list = list(self.members_list_ref) 
 
@@ -382,7 +372,7 @@ class MonitoringThread(QThread):
                         member_display_name = self._get_member_display_name_with_index_from_thread(member_to_process, initial_scan_idx)
 
                         now_ts = time.time()
-                        if not self.scheduler.can_process_member(self._get_member_key(member_to_process), now_ts):
+                        if self.robot_enabled and not self.robot.can_process(self._get_member_key(member_to_process)):
                             self._scheduler_skip_member(initial_scan_idx, member_to_process)
                             continue
 
@@ -402,7 +392,8 @@ class MonitoringThread(QThread):
                             logger.info(f"الفحص الأولي: تجاوز العضو {member_display_name} لأنه في حالة: {member_to_process.status}.")
                             self.update_member_gui_signal.emit(initial_scan_idx, member_to_process.status, member_to_process.last_activity_detail, get_icon_name_for_status(member_to_process.status))
                             self.member_being_processed_signal.emit(initial_scan_idx, False)
-                            self._record_robot_result(member_to_process, ResultType.INVALID)
+                            if self.robot_enabled:
+                                self._record_robot_result(member_to_process, ResultType.INVALID)
                             if self.is_running: time.sleep(SHORT_SKIP_DELAY_SECONDS)
                             continue
 
@@ -461,11 +452,13 @@ class MonitoringThread(QThread):
                                 member_to_process.consecutive_failures = 0
                                 if not member_had_api_error_this_cycle : self.consecutive_network_error_trigger_count = 0
 
-                            result_type = self.result_classifier.classify(
+                            result_type = self.robot.classifier.classify(
                                 member_to_process.status,
-                                member_to_process.last_activity_detail
+                                member_to_process.last_activity_detail,
+                                data=getattr(member_to_process, "last_available_dates_data", None),
                             )
-                            self._record_robot_result(member_to_process, result_type)
+                            if self.robot_enabled:
+                                self._record_robot_result(member_to_process, result_type)
 
 
                         except Exception as e:
@@ -476,7 +469,8 @@ class MonitoringThread(QThread):
                             member_to_process.consecutive_failures +=1
                             self.consecutive_network_error_trigger_count +=1
                             self.update_member_gui_signal.emit(initial_scan_idx, member_to_process.status, member_to_process.last_activity_detail, "SP_MessageBoxCritical")
-                            self._record_robot_result(member_to_process, ResultType.NETWORK)
+                            if self.robot_enabled:
+                                self._record_robot_result(member_to_process, ResultType.NETWORK_ERROR)
                         finally:
                             if self.is_running:
                                 self.member_being_processed_signal.emit(initial_scan_idx, False)
@@ -517,7 +511,7 @@ class MonitoringThread(QThread):
 
             logger.info(f"بدء دورة مراقبة دورية... (من الفهرس {self.current_member_index_to_process}) عدد الأعضاء الكلي: {len(current_members_snapshot_indices)}")
             self._emit_global_log(f"بدء دورة مراقبة دورية... ({time.strftime('%H:%M:%S')})")
-            self.scheduler.start_round()
+            self.robot.start_round()
 
             processed_in_this_cycle = False 
 
@@ -540,7 +534,7 @@ class MonitoringThread(QThread):
                 member_display_name_periodic = self._get_member_display_name_with_index_from_thread(member_to_process, main_list_idx)
 
                 now_ts = time.time()
-                if not self.scheduler.can_process_member(self._get_member_key(member_to_process), now_ts):
+                if self.robot_enabled and not self.robot.can_process(self._get_member_key(member_to_process)):
                     self._scheduler_skip_member(main_list_idx, member_to_process)
                     continue
 
@@ -560,7 +554,8 @@ class MonitoringThread(QThread):
                     logger.info(f"المراقبة الدورية: تجاوز العضو {member_display_name_periodic} لأنه في حالة: {member_to_process.status}.")
                     self.update_member_gui_signal.emit(main_list_idx, member_to_process.status, member_to_process.last_activity_detail, get_icon_name_for_status(member_to_process.status))
                     self.member_being_processed_signal.emit(main_list_idx, False) 
-                    self._record_robot_result(member_to_process, ResultType.INVALID)
+                    if self.robot_enabled:
+                        self._record_robot_result(member_to_process, ResultType.INVALID)
                     if self.is_running: time.sleep(SHORT_SKIP_DELAY_SECONDS)
                     self.current_member_index_to_process = (main_list_idx + 1) % len(self.members_list_ref) if self.members_list_ref else 0
                     continue 
@@ -623,11 +618,13 @@ class MonitoringThread(QThread):
                         member_to_process.consecutive_failures = 0
                         self.consecutive_network_error_trigger_count = 0 
 
-                    result_type = self.result_classifier.classify(
+                    result_type = self.robot.classifier.classify(
                         member_to_process.status,
-                        member_to_process.last_activity_detail
+                        member_to_process.last_activity_detail,
+                        data=getattr(member_to_process, "last_available_dates_data", None),
                     )
-                    self._record_robot_result(member_to_process, result_type)
+                    if self.robot_enabled:
+                        self._record_robot_result(member_to_process, result_type)
 
                 except Exception as e:
                     if not self.is_running: break
@@ -637,7 +634,8 @@ class MonitoringThread(QThread):
                     member_to_process.consecutive_failures +=1 
                     self.consecutive_network_error_trigger_count +=1 
                     self.update_member_gui_signal.emit(main_list_idx, member_to_process.status, member_to_process.last_activity_detail, "SP_MessageBoxCritical")
-                    self._record_robot_result(member_to_process, ResultType.NETWORK)
+                    if self.robot_enabled:
+                        self._record_robot_result(member_to_process, ResultType.NETWORK_ERROR)
                 finally:
                     if self.is_running:
                         self.member_being_processed_signal.emit(main_list_idx, False) 
@@ -672,7 +670,7 @@ class MonitoringThread(QThread):
                 logger.info(f"المراقبة الدورية: لم يتم فحص أي أعضاء. الانتظار للدورة القادمة.")
                 self._emit_global_log("المراقبة الدورية: لم يتم فحص أي أعضاء مؤهلين. الانتظار...")
             
-            next_wait = self.scheduler.next_global_wait_seconds(time.time())
+            next_wait = self.robot.next_wait_seconds() if self.robot_enabled else 0
             if next_wait <= 0:
                 next_wait = int(self.interval_ms / 1000)
             self._wait_with_countdown(next_wait, "الدورة التالية بعد: ")
@@ -697,11 +695,11 @@ class MonitoringThread(QThread):
     def _scheduler_skip_member(self, main_list_idx, member_obj):
         now_ts = time.time()
         member_key = self._get_member_key(member_obj)
-        wait_seconds = self.scheduler.next_wait_seconds(member_key, now_ts)
+        wait_seconds = self.robot.scheduler.state_for(member_key).next_allowed_check_at - now_ts
         wait_minutes = max(1, int(wait_seconds / 60)) if wait_seconds else 1
         detail_text = f"تبريد {wait_minutes} د"
-        state = self.scheduler._state_for(member_key)
-        if now_ts - state.last_ui_update_at < 60:
+        state = self.robot.scheduler.state_for(member_key)
+        if now_ts - state.last_ui_update_at < 600:
             return
         state.last_ui_update_at = now_ts
         self._update_member_and_emit(
@@ -713,21 +711,28 @@ class MonitoringThread(QThread):
         )
 
     def _emit_robot_status(self):
-        next_check_ts = self.scheduler.global_rate.next_allowed_at
+        if not self.robot_enabled:
+            self.robot_status_signal.emit("NORMAL", "-", "الروبوت متوقف")
+            return
+        self.robot.update_mode()
+        next_check_ts = self.robot.scheduler.rate_limiter.next_allowed_at
         next_check_text = time.strftime("%H:%M:%S", time.localtime(next_check_ts)) if next_check_ts else "-"
-        last_alert = self.robot_repo.get_last_alert()
-        self.robot_status_signal.emit(self.scheduler.mode, next_check_text, last_alert)
+        last_alert = self.robot.last_alert()
+        self.robot_status_signal.emit(self.robot.scheduler.mode, next_check_text, last_alert)
 
     def _record_robot_result(self, member_obj, result_type):
         member_key = self._get_member_key(member_obj)
-        now_ts = time.time()
-        cooldown_seconds, mode = self.scheduler.record_result(member_key, result_type, now_ts)
-        self.robot_repo.upsert_member_state(member_key, self.scheduler._state_for(member_key))
-        self.robot_repo.log_check(member_key, result_type)
-        explanation = explain_result(result_type, cooldown_seconds)
-        if result_type in [ResultType.RATE_LIMIT, ResultType.NETWORK, ResultType.HAS_DATES]:
-            self.robot_repo.add_alert(explanation)
+        cooldown_seconds, mode = self.robot.record_result(
+            member_key,
+            result_type,
+            detail=(member_obj.last_activity_detail or "")[:60],
+        )
+        explanation = self.robot.explain_result(result_type, cooldown_seconds)
+        if result_type in [ResultType.RATE_LIMIT, ResultType.NETWORK_ERROR, ResultType.HAS_DATES, ResultType.PROTECTED_STEP, ResultType.SERVER_ERROR]:
             self.robot_alert_signal.emit(explanation)
+        if result_type == ResultType.PROTECTED_STEP:
+            self._emit_global_log("تم اكتشاف خطوة محمية. يتطلب التدخل اليدوي.", is_general=True)
+            self.is_running = False
         self._emit_robot_status()
 
     def process_validation(self, main_list_idx, member_obj): 
@@ -735,7 +740,7 @@ class MonitoringThread(QThread):
         operation_name = "التحقق من البيانات (دوري)"
         member_display_name = self._get_member_display_name_with_index_from_thread(member_obj, main_list_idx)
         self._update_member_and_emit(main_list_idx, member_obj, "جاري التحقق (دورة)...", f"إعادة التحقق للعضو {member_display_name}", get_icon_name_for_status("جاري التحقق (دورة)..."))
-        data, error = self.har_client.validate_candidate(member_obj.wassit_no, member_obj.nin)
+        data, error = self.robot.client.validate_candidate(member_obj.wassit_no, member_obj.nin)
         if not self.is_running: return False, False
         
         new_status = member_obj.status 
@@ -844,7 +849,7 @@ class MonitoringThread(QThread):
             return False, False 
         
         self._update_member_and_emit(main_list_idx, member_obj, "جاري جلب الاسم...", f"محاولة جلب الاسم واللقب للعضو {member_display_name}", get_icon_name_for_status("جاري جلب الاسم..."))
-        data, error = self.har_client.get_pre_inscription(member_obj.pre_inscription_id)
+        data, error = self.robot.client.get_preinscription(member_obj.pre_inscription_id)
         if not self.is_running: return False, False
         
         new_status = member_obj.status 
@@ -907,7 +912,8 @@ class MonitoringThread(QThread):
         
         self._update_member_and_emit(main_list_idx, member_obj, "جاري البحث عن مواعيد...", f"البحث عن مواعيد للعضو {member_display_name}", get_icon_name_for_status("جاري البحث عن مواعيد..."))
         self._emit_global_log(f"جاري البحث عن مواعيد...", is_general=False, member_obj=member_obj, member_idx=main_list_idx)
-        data, error = self.har_client.get_available_dates(member_obj.structure_id, member_obj.pre_inscription_id)
+        data, error = self.robot.client.get_available_dates(member_obj.structure_id, member_obj.pre_inscription_id)
+        member_obj.last_available_dates_data = data if isinstance(data, dict) else None
         if not self.is_running: return False, False
         
         new_status = member_obj.status
@@ -946,7 +952,7 @@ class MonitoringThread(QThread):
                     return False, False 
                 
                 if not self.is_running: return False, api_error_occurred_this_stage 
-                book_data, book_error = self.har_client.create_rendezvous(
+                book_data, book_error = self.robot.client.create_rendezvous(
                     member_obj.pre_inscription_id, member_obj.demandeur_id, formatted_date,
                     member_obj.ccp, member_obj.nom_fr, member_obj.prenom_fr
                 )
