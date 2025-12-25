@@ -483,6 +483,9 @@ class MonitoringThread(QThread):
                             )
                             if self.robot_enabled:
                                 self._record_robot_result(member_to_process, result_type)
+                                if self.robot.scheduler.is_paused():
+                                    logger.warning("CIRCUIT_BREAKER active due to 429")
+                                    break
 
 
                         except Exception as e:
@@ -650,6 +653,9 @@ class MonitoringThread(QThread):
                     )
                     if self.robot_enabled:
                         self._record_robot_result(member_to_process, result_type)
+                        if self.robot.scheduler.is_paused():
+                            logger.warning("CIRCUIT_BREAKER active due to 429")
+                            break
 
                 except Exception as e:
                     if not self.is_running: break
@@ -661,6 +667,12 @@ class MonitoringThread(QThread):
                     self.update_member_gui_signal.emit(main_list_idx, member_to_process.status, member_to_process.last_activity_detail, "SP_MessageBoxCritical")
                     if self.robot_enabled:
                         self._record_robot_result(member_to_process, ResultType.NETWORK_ERROR)
+                        if self.robot.scheduler.is_paused():
+                            logger.warning("CIRCUIT_BREAKER active due to 429")
+                            break
+                        if self.robot.scheduler.is_paused():
+                            logger.warning("CIRCUIT_BREAKER active due to 429")
+                            break
                 finally:
                     if self.is_running:
                         self.member_being_processed_signal.emit(main_list_idx, False) 
@@ -699,6 +711,9 @@ class MonitoringThread(QThread):
             next_wait = self.robot.next_wait_seconds() if self.robot_enabled else 0
             if next_wait <= 0:
                 next_wait = int(self.interval_ms / 1000)
+            if self.robot_enabled:
+                resume_at = time.strftime("%H:%M", time.localtime(time.time() + next_wait))
+                logger.info(f"ROBOT_SLEEP until {resume_at} (reason: round complete)")
             self._wait_with_countdown(next_wait, "الدورة التالية بعد: ")
             if not self.is_running: break
         

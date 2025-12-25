@@ -1283,6 +1283,9 @@ class AnemApp(QMainWindow):
                     resume_text = time.strftime("%H:%M", time.localtime(next_allowed)) if next_allowed else "--:--"
                     self._show_toast(f"العضو في تبريد حتى {resume_text}", type="warning", title="فحص فوري")
                     return
+                if self.monitoring_thread.robot.scheduler.is_paused():
+                    self._show_toast("الروبوت متوقف مؤقتًا بسبب ضغط الخادم.", type="warning", title="فحص فوري")
+                    return
 
             if member.is_processing: 
                  self._show_toast(f"العضو '{member_display_name}' قيد المعالجة حاليًا. يرجى الانتظار.", type="warning", title="فحص فوري")
