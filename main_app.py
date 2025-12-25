@@ -178,6 +178,10 @@ class AnemApp(QMainWindow):
         self.member_overview_wait = None
         self.member_overview_last = None
         self.member_overview_hint = None
+        self.robot_status_frame = None
+        self.robot_mode_label = None
+        self.robot_next_label = None
+        self.robot_alert_label = None
 
         self.api_client = AnemAPIClient(
             initial_backoff_general=self.settings.get(SETTING_BACKOFF_GENERAL, DEFAULT_SETTINGS[SETTING_BACKOFF_GENERAL]),
@@ -210,6 +214,8 @@ class AnemApp(QMainWindow):
         self.monitoring_thread.global_log_signal.connect(self.update_status_bar_message)
         self.monitoring_thread.member_being_processed_signal.connect(self.handle_member_processing_signal)
         self.monitoring_thread.countdown_update_signal.connect(self.update_countdown_timer_display)
+        self.monitoring_thread.robot_status_signal.connect(self.update_robot_status_panel)
+        self.monitoring_thread.robot_alert_signal.connect(self._handle_robot_alert)
 
         self.subscription_updated_signal.connect(self._handle_subscription_update_from_signal)
         self.new_app_messages_signal.connect(self._handle_incoming_app_messages_on_main_thread) # ربط الإشارة الجديدة
@@ -887,6 +893,30 @@ class AnemApp(QMainWindow):
         filter_layout.addWidget(self.clear_filter_button)
 
         main_layout.addWidget(self.search_filter_frame)
+
+        self.robot_status_frame = QFrame()
+        self.robot_status_frame.setObjectName("RobotStatusFrame")
+        robot_layout = QHBoxLayout(self.robot_status_frame)
+        robot_layout.setContentsMargins(12, 6, 12, 6)
+        robot_layout.setSpacing(14)
+
+        robot_title = QLabel("حالة الروبوت")
+        robot_title.setObjectName("RobotStatusTitle")
+        robot_layout.addWidget(robot_title)
+
+        self.robot_mode_label = QLabel("الوضع: sleep")
+        self.robot_mode_label.setObjectName("RobotStatusValue")
+        robot_layout.addWidget(self.robot_mode_label)
+
+        self.robot_next_label = QLabel("الفحص التالي: -")
+        self.robot_next_label.setObjectName("RobotStatusValue")
+        robot_layout.addWidget(self.robot_next_label)
+
+        self.robot_alert_label = QLabel("آخر تنبيه: لا يوجد")
+        self.robot_alert_label.setObjectName("RobotStatusValue")
+        robot_layout.addWidget(self.robot_alert_label, 1)
+
+        main_layout.addWidget(self.robot_status_frame)
 
         # التركيز على الجدول فقط مع تخفيف العناصر الثانوية
         self.insight_frame = None
@@ -2568,6 +2598,19 @@ class AnemApp(QMainWindow):
                 self.countdown_label.setText("لا يوجد انتظار")
                 self.countdown_label.setToolTip("لا يوجد انتظار حالي")
                 self.latest_countdown_text = "لا يوجد انتظار حالي"
+
+    def update_robot_status_panel(self, mode, next_check_text, last_alert):
+        if not self.robot_status_frame:
+            return
+        mode_label = "burst" if mode == "burst" else "sleep"
+        self.robot_mode_label.setText(f"الوضع: {mode_label}")
+        self.robot_next_label.setText(f"الفحص التالي: {next_check_text}")
+        self.robot_alert_label.setText(f"آخر تنبيه: {last_alert}")
+
+    def _handle_robot_alert(self, message):
+        if not message:
+            return
+        self._show_toast(message, type="info", title="روبوت المراقبة")
 
 
 

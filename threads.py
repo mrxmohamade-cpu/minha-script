@@ -4,12 +4,19 @@ import random
 import logging
 import os 
 import base64 
-from dataclasses import dataclass, field
 from PyQt5.QtCore import QThread, pyqtSignal, QStandardPaths 
 
 from api_client import AnemAPIClient 
 from member import Member 
 from utils import get_icon_name_for_status 
+from robot_engine import (
+    HarClient,
+    ResultClassifier,
+    SmartScheduler,
+    ResultType,
+    RobotRepository,
+    explain_result,
+)
 from config import (
     SETTING_MIN_MEMBER_DELAY, SETTING_MAX_MEMBER_DELAY,
     SETTING_MONITORING_INTERVAL, SETTING_BACKOFF_429,
@@ -74,86 +81,6 @@ def _translate_api_error(error_string, operation_name="العملية"):
     return f"فشل في {operation_name}: {snippet}"
 
 
-class ResultType:
-    NO_DATES = "NO_DATES"
-    RATE_LIMIT = "RATE_LIMIT"
-    NETWORK = "NETWORK"
-    HAS_RDV = "HAS_RDV"
-    INVALID = "INVALID"
-    HAS_DATES = "HAS_DATES"
-    UNKNOWN = "UNKNOWN"
-
-
-@dataclass
-class MemberState:
-    next_allowed_check_at: float = 0.0
-    last_result_type: str = ResultType.UNKNOWN
-    consecutive_failures: int = 0
-    cooldown_level: int = 0
-    priority_score: float = 0.0
-    last_round_processed: int = -1
-
-
-class SmartScheduler:
-    def __init__(self, global_min_interval=1.5):
-        self.global_min_interval = global_min_interval
-        self.global_next_allowed_at = 0.0
-        self.round_id = 0
-        self.member_states = {}
-
-    def start_round(self):
-        self.round_id += 1
-
-    def _state_for(self, member_key):
-        if member_key not in self.member_states:
-            self.member_states[member_key] = MemberState()
-        return self.member_states[member_key]
-
-    def can_process_member(self, member_key, now_ts):
-        state = self._state_for(member_key)
-        if state.last_round_processed == self.round_id:
-            return False
-        if now_ts < state.next_allowed_check_at:
-            return False
-        if now_ts < self.global_next_allowed_at:
-            return False
-        return True
-
-    def next_wait_seconds(self, member_key, now_ts):
-        state = self._state_for(member_key)
-        return max(0, int(max(state.next_allowed_check_at, self.global_next_allowed_at) - now_ts))
-
-    def record_result(self, member_key, result_type, now_ts):
-        state = self._state_for(member_key)
-        state.last_round_processed = self.round_id
-        state.last_result_type = result_type
-
-        jitter = random.uniform(3, 10)
-        cooldown_seconds = 0
-
-        if result_type == ResultType.NO_DATES:
-            cooldown_seconds = (2 * 60 * 60) + random.uniform(5 * 60, 20 * 60)
-            state.cooldown_level = max(state.cooldown_level - 1, 0)
-        elif result_type == ResultType.RATE_LIMIT:
-            state.cooldown_level = min(state.cooldown_level + 1, 6)
-            cooldown_seconds = (60 * (2 ** state.cooldown_level)) + random.uniform(20, 60)
-            self.global_next_allowed_at = max(self.global_next_allowed_at, now_ts + cooldown_seconds)
-        elif result_type == ResultType.NETWORK:
-            state.cooldown_level = min(state.cooldown_level + 1, 4)
-            cooldown_seconds = (5 * 60 * (state.cooldown_level + 1)) + random.uniform(30, 120)
-        elif result_type == ResultType.HAS_RDV:
-            cooldown_seconds = 12 * 60 * 60
-        elif result_type == ResultType.INVALID:
-            cooldown_seconds = 24 * 60 * 60
-        elif result_type == ResultType.HAS_DATES:
-            cooldown_seconds = (5 * 60) + random.uniform(30, 120)
-            state.cooldown_level = max(state.cooldown_level - 1, 0)
-        else:
-            cooldown_seconds = 10 * 60
-
-        state.next_allowed_check_at = now_ts + cooldown_seconds + jitter
-        self.global_next_allowed_at = max(self.global_next_allowed_at, now_ts + self.global_min_interval)
-        return cooldown_seconds
 
 
 class FetchInitialInfoThread(QThread):
@@ -333,6 +260,8 @@ class MonitoringThread(QThread):
     global_log_signal = pyqtSignal(str, bool, object, int) 
     member_being_processed_signal = pyqtSignal(int, bool)    
     countdown_update_signal = pyqtSignal(str) 
+    robot_status_signal = pyqtSignal(str, str, str)
+    robot_alert_signal = pyqtSignal(str)
 
     SITE_CHECK_INTERVAL_SECONDS = 60 
     MAX_CONSECUTIVE_MEMBER_FAILURES = 5 
@@ -350,6 +279,14 @@ class MonitoringThread(QThread):
         self.consecutive_network_error_trigger_count = 0 
         self.initial_scan_completed = False 
         self.scheduler = SmartScheduler(global_min_interval=max(1.0, float(self.min_member_delay)))
+        self.result_classifier = ResultClassifier()
+        self.har_client = HarClient(self.api_client)
+        robot_db_path = os.path.join(
+            QStandardPaths.writableLocation(QStandardPaths.AppDataLocation),
+            "robot_state.db"
+        )
+        os.makedirs(os.path.dirname(robot_db_path), exist_ok=True)
+        self.robot_repo = RobotRepository(robot_db_path)
 
     def _apply_settings(self):
         self.interval_ms = self.settings.get(SETTING_MONITORING_INTERVAL, DEFAULT_SETTINGS[SETTING_MONITORING_INTERVAL]) * 60 * 1000
@@ -361,6 +298,7 @@ class MonitoringThread(QThread):
             initial_backoff_429=self.settings.get(SETTING_BACKOFF_429, DEFAULT_SETTINGS[SETTING_BACKOFF_429]),
             request_timeout=self.settings.get(SETTING_REQUEST_TIMEOUT, DEFAULT_SETTINGS[SETTING_REQUEST_TIMEOUT])
         )
+        self.har_client = HarClient(self.api_client)
         logger.info(f"MonitoringThread settings applied: Interval={self.interval_ms/60000:.1f}min, MemberDelay=[{self.min_member_delay}-{self.max_member_delay}]s")
 
     def _emit_global_log(self, message, is_general=True, member_obj=None, member_idx=-1):
@@ -392,6 +330,7 @@ class MonitoringThread(QThread):
     def run(self):
         statuses_to_completely_skip_monitoring = ["مستفيد حاليًا من المنحة"]
         statuses_for_pdf_check_only = ["مكتمل", "لديه موعد مسبق"] 
+        self._emit_robot_status()
         
         while self.is_running:
             if self.is_connection_lost_mode:
@@ -462,7 +401,7 @@ class MonitoringThread(QThread):
                             logger.info(f"الفحص الأولي: تجاوز العضو {member_display_name} لأنه في حالة: {member_to_process.status}.")
                             self.update_member_gui_signal.emit(initial_scan_idx, member_to_process.status, member_to_process.last_activity_detail, get_icon_name_for_status(member_to_process.status))
                             self.member_being_processed_signal.emit(initial_scan_idx, False)
-                            self.scheduler.record_result(self._get_member_key(member_to_process), ResultType.INVALID, time.time())
+                            self._record_robot_result(member_to_process, ResultType.INVALID)
                             if self.is_running: time.sleep(SHORT_SKIP_DELAY_SECONDS)
                             continue
 
@@ -521,8 +460,11 @@ class MonitoringThread(QThread):
                                 member_to_process.consecutive_failures = 0
                                 if not member_had_api_error_this_cycle : self.consecutive_network_error_trigger_count = 0
 
-                            result_type = self._classify_result(member_to_process, member_had_api_error_this_cycle)
-                            self.scheduler.record_result(self._get_member_key(member_to_process), result_type, time.time())
+                            result_type = self.result_classifier.classify(
+                                member_to_process.status,
+                                member_to_process.last_activity_detail
+                            )
+                            self._record_robot_result(member_to_process, result_type)
 
 
                         except Exception as e:
@@ -533,7 +475,7 @@ class MonitoringThread(QThread):
                             member_to_process.consecutive_failures +=1
                             self.consecutive_network_error_trigger_count +=1
                             self.update_member_gui_signal.emit(initial_scan_idx, member_to_process.status, member_to_process.last_activity_detail, "SP_MessageBoxCritical")
-                            self.scheduler.record_result(self._get_member_key(member_to_process), ResultType.NETWORK, time.time())
+                            self._record_robot_result(member_to_process, ResultType.NETWORK)
                         finally:
                             if self.is_running:
                                 self.member_being_processed_signal.emit(initial_scan_idx, False)
@@ -617,7 +559,7 @@ class MonitoringThread(QThread):
                     logger.info(f"المراقبة الدورية: تجاوز العضو {member_display_name_periodic} لأنه في حالة: {member_to_process.status}.")
                     self.update_member_gui_signal.emit(main_list_idx, member_to_process.status, member_to_process.last_activity_detail, get_icon_name_for_status(member_to_process.status))
                     self.member_being_processed_signal.emit(main_list_idx, False) 
-                    self.scheduler.record_result(self._get_member_key(member_to_process), ResultType.INVALID, time.time())
+                    self._record_robot_result(member_to_process, ResultType.INVALID)
                     if self.is_running: time.sleep(SHORT_SKIP_DELAY_SECONDS)
                     self.current_member_index_to_process = (main_list_idx + 1) % len(self.members_list_ref) if self.members_list_ref else 0
                     continue 
@@ -680,8 +622,11 @@ class MonitoringThread(QThread):
                         member_to_process.consecutive_failures = 0
                         self.consecutive_network_error_trigger_count = 0 
 
-                    result_type = self._classify_result(member_to_process, member_had_api_error_this_cycle)
-                    self.scheduler.record_result(self._get_member_key(member_to_process), result_type, time.time())
+                    result_type = self.result_classifier.classify(
+                        member_to_process.status,
+                        member_to_process.last_activity_detail
+                    )
+                    self._record_robot_result(member_to_process, result_type)
 
                 except Exception as e:
                     if not self.is_running: break
@@ -691,7 +636,7 @@ class MonitoringThread(QThread):
                     member_to_process.consecutive_failures +=1 
                     self.consecutive_network_error_trigger_count +=1 
                     self.update_member_gui_signal.emit(main_list_idx, member_to_process.status, member_to_process.last_activity_detail, "SP_MessageBoxCritical")
-                    self.scheduler.record_result(self._get_member_key(member_to_process), ResultType.NETWORK, time.time())
+                    self._record_robot_result(member_to_process, ResultType.NETWORK)
                 finally:
                     if self.is_running:
                         self.member_being_processed_signal.emit(main_list_idx, False) 
@@ -758,30 +703,30 @@ class MonitoringThread(QThread):
             get_icon_name_for_status(member_obj.status)
         )
 
-    def _classify_result(self, member_obj, api_error_occurred):
-        detail = (member_obj.last_activity_detail or "").lower()
-        status = member_obj.status
+    def _emit_robot_status(self):
+        next_check_ts = self.scheduler.global_rate.next_allowed_at
+        next_check_text = time.strftime("%H:%M:%S", time.localtime(next_check_ts)) if next_check_ts else "-"
+        last_alert = self.robot_repo.get_last_alert()
+        self.robot_status_signal.emit(self.scheduler.mode, next_check_text, last_alert)
 
-        if "429" in detail or "طلبات كثيرة" in detail:
-            return ResultType.RATE_LIMIT
-        if status in ["لا توجد مواعيد"]:
-            return ResultType.NO_DATES
-        if status in ["تم الحجز", "لديه موعد مسبق", "مكتمل"]:
-            return ResultType.HAS_RDV
-        if status in ["غير مؤهل للحجز", "بيانات الإدخال خاطئة", "غير مؤهل مبدئيًا"]:
-            return ResultType.INVALID
-        if status in ["جاري البحث عن مواعيد...", "جاري حجز الموعد..."] and not api_error_occurred:
-            return ResultType.HAS_DATES
-        if api_error_occurred or status in ["فشل التحقق", "فشل جلب المعلومات", "فشل جلب التواريخ", "فشل الحجز"]:
-            return ResultType.NETWORK
-        return ResultType.UNKNOWN
+    def _record_robot_result(self, member_obj, result_type):
+        member_key = self._get_member_key(member_obj)
+        now_ts = time.time()
+        cooldown_seconds, mode = self.scheduler.record_result(member_key, result_type, now_ts)
+        self.robot_repo.upsert_member_state(member_key, self.scheduler._state_for(member_key))
+        self.robot_repo.log_check(member_key, result_type)
+        explanation = explain_result(result_type, cooldown_seconds)
+        if result_type in [ResultType.RATE_LIMIT, ResultType.NETWORK, ResultType.HAS_DATES]:
+            self.robot_repo.add_alert(explanation)
+            self.robot_alert_signal.emit(explanation)
+        self._emit_robot_status()
 
     def process_validation(self, main_list_idx, member_obj): 
         if not self.is_running: return False, False
         operation_name = "التحقق من البيانات (دوري)"
         member_display_name = self._get_member_display_name_with_index_from_thread(member_obj, main_list_idx)
         self._update_member_and_emit(main_list_idx, member_obj, "جاري التحقق (دورة)...", f"إعادة التحقق للعضو {member_display_name}", get_icon_name_for_status("جاري التحقق (دورة)..."))
-        data, error = self.api_client.validate_candidate(member_obj.wassit_no, member_obj.nin)
+        data, error = self.har_client.validate_candidate(member_obj.wassit_no, member_obj.nin)
         if not self.is_running: return False, False
         
         new_status = member_obj.status 
@@ -890,7 +835,7 @@ class MonitoringThread(QThread):
             return False, False 
         
         self._update_member_and_emit(main_list_idx, member_obj, "جاري جلب الاسم...", f"محاولة جلب الاسم واللقب للعضو {member_display_name}", get_icon_name_for_status("جاري جلب الاسم..."))
-        data, error = self.api_client.get_pre_inscription_info(member_obj.pre_inscription_id)
+        data, error = self.har_client.get_pre_inscription(member_obj.pre_inscription_id)
         if not self.is_running: return False, False
         
         new_status = member_obj.status 
@@ -953,7 +898,7 @@ class MonitoringThread(QThread):
         
         self._update_member_and_emit(main_list_idx, member_obj, "جاري البحث عن مواعيد...", f"البحث عن مواعيد للعضو {member_display_name}", get_icon_name_for_status("جاري البحث عن مواعيد..."))
         self._emit_global_log(f"جاري البحث عن مواعيد...", is_general=False, member_obj=member_obj, member_idx=main_list_idx)
-        data, error = self.api_client.get_available_dates(member_obj.structure_id, member_obj.pre_inscription_id)
+        data, error = self.har_client.get_available_dates(member_obj.structure_id, member_obj.pre_inscription_id)
         if not self.is_running: return False, False
         
         new_status = member_obj.status
@@ -992,9 +937,9 @@ class MonitoringThread(QThread):
                     return False, False 
                 
                 if not self.is_running: return False, api_error_occurred_this_stage 
-                book_data, book_error = self.api_client.create_rendezvous(
-                    member_obj.pre_inscription_id, member_obj.ccp, member_obj.nom_fr, member_obj.prenom_fr,
-                    formatted_date, member_obj.demandeur_id
+                book_data, book_error = self.har_client.create_rendezvous(
+                    member_obj.pre_inscription_id, member_obj.demandeur_id, formatted_date,
+                    member_obj.ccp, member_obj.nom_fr, member_obj.prenom_fr
                 )
                 if not self.is_running: return False, api_error_occurred_this_stage 
 

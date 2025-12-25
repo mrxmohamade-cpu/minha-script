@@ -67,6 +67,22 @@ QFrame#FilterBar {
     padding: 4px 8px;
 }
 
+QFrame#RobotStatusFrame {
+    background: #0f1827;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 12px;
+    padding: 4px 8px;
+}
+
+QLabel#RobotStatusTitle {
+    color: #dfe7f7;
+    font-weight: 700;
+}
+
+QLabel#RobotStatusValue {
+    color: #aeb8cd;
+}
+
 QLineEdit, QComboBox {
     background: #0f1827;
     color: #e9edf4;
