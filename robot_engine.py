@@ -26,6 +26,7 @@ class MemberState:
     consecutive_failures: int = 0
     cooldown_level: int = 0
     last_round_processed: int = -1
+    last_ui_update_at: float = 0.0
 
 
 class RateLimiter:
@@ -51,13 +52,17 @@ class ResultClassifier:
             return ResultType.NETWORK
         if "500" in error or "server" in error:
             return ResultType.SERVER_ERROR
+        if status in ["فشل التحقق", "فشل جلب المعلومات", "فشل جلب التواريخ", "فشل الحجز", "خطأ في المعالجة"]:
+            return ResultType.NETWORK
         if status in ["لا توجد مواعيد"]:
             return ResultType.NO_DATES
         if status in ["تم الحجز", "لديه موعد مسبق", "مكتمل"]:
             return ResultType.HAS_RDV
         if status in ["غير مؤهل للحجز", "بيانات الإدخال خاطئة", "غير مؤهل مبدئيًا"]:
             return ResultType.INVALID
-        if status in ["جاري البحث عن مواعيد...", "جاري حجز الموعد..."] and not error:
+        if status in ["تم جلب المعلومات", "تم التحقق", "يتطلب تسجيل مسبق", "جاري جلب الاسم..."]:
+            return ResultType.NO_DATES
+        if status in ["جاري البحث عن مواعيد..."] and data and data.get("dates"):
             return ResultType.HAS_DATES
         return ResultType.UNKNOWN
 
@@ -195,6 +200,28 @@ class RobotRepository:
             row = cur.fetchone()
             return row[0] if row else "لا توجد تنبيهات"
 
+    def load_member_states(self):
+        with self._connect() as conn:
+            cur = conn.execute(
+                """
+                SELECT member_key, last_check_at, next_allowed_check_at, last_result_type,
+                       consecutive_failures, cooldown_level, last_round_processed
+                FROM member_state
+                """
+            )
+            states = {}
+            for row in cur.fetchall():
+                member_key = row[0]
+                states[member_key] = MemberState(
+                    last_check_at=row[1] or 0.0,
+                    next_allowed_check_at=row[2] or 0.0,
+                    last_result_type=row[3] or ResultType.UNKNOWN,
+                    consecutive_failures=row[4] or 0,
+                    cooldown_level=row[5] or 0,
+                    last_round_processed=row[6] if row[6] is not None else -1,
+                )
+            return states
+
 
 class SmartScheduler:
     def __init__(self, global_min_interval=1.5):
@@ -235,7 +262,7 @@ class SmartScheduler:
         cooldown_seconds = 0
 
         if result_type == ResultType.NO_DATES:
-            cooldown_seconds = (2 * 60 * 60) + random.uniform(5 * 60, 20 * 60)
+            cooldown_seconds = random.uniform(6 * 60 * 60, 24 * 60 * 60)
             state.cooldown_level = max(state.cooldown_level - 1, 0)
             self.mode = "sleep"
         elif result_type == ResultType.RATE_LIMIT:
@@ -264,6 +291,14 @@ class SmartScheduler:
         state.next_allowed_check_at = now_ts + cooldown_seconds + jitter
         self.global_rate.reserve(now_ts)
         return cooldown_seconds, self.mode
+
+    def next_global_wait_seconds(self, now_ts):
+        if not self.member_states:
+            return 0
+        earliest = min(state.next_allowed_check_at for state in self.member_states.values() if state.next_allowed_check_at)
+        if earliest <= 0:
+            return 0
+        return max(0, int(earliest - now_ts))
 
 
 def explain_result(result_type, cooldown_seconds):

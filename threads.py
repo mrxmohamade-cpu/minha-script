@@ -287,6 +287,7 @@ class MonitoringThread(QThread):
         )
         os.makedirs(os.path.dirname(robot_db_path), exist_ok=True)
         self.robot_repo = RobotRepository(robot_db_path)
+        self.scheduler.member_states = self.robot_repo.load_member_states()
 
     def _apply_settings(self):
         self.interval_ms = self.settings.get(SETTING_MONITORING_INTERVAL, DEFAULT_SETTINGS[SETTING_MONITORING_INTERVAL]) * 60 * 1000
@@ -671,7 +672,10 @@ class MonitoringThread(QThread):
                 logger.info(f"المراقبة الدورية: لم يتم فحص أي أعضاء. الانتظار للدورة القادمة.")
                 self._emit_global_log("المراقبة الدورية: لم يتم فحص أي أعضاء مؤهلين. الانتظار...")
             
-            self._wait_with_countdown(int(self.interval_ms / 1000), "الدورة التالية بعد: ")
+            next_wait = self.scheduler.next_global_wait_seconds(time.time())
+            if next_wait <= 0:
+                next_wait = int(self.interval_ms / 1000)
+            self._wait_with_countdown(next_wait, "الدورة التالية بعد: ")
             if not self.is_running: break
         
         logger.info("خيط المراقبة يتوقف.")
@@ -692,9 +696,14 @@ class MonitoringThread(QThread):
 
     def _scheduler_skip_member(self, main_list_idx, member_obj):
         now_ts = time.time()
-        wait_seconds = self.scheduler.next_wait_seconds(self._get_member_key(member_obj), now_ts)
+        member_key = self._get_member_key(member_obj)
+        wait_seconds = self.scheduler.next_wait_seconds(member_key, now_ts)
         wait_minutes = max(1, int(wait_seconds / 60)) if wait_seconds else 1
         detail_text = f"تبريد {wait_minutes} د"
+        state = self.scheduler._state_for(member_key)
+        if now_ts - state.last_ui_update_at < 60:
+            return
+        state.last_ui_update_at = now_ts
         self._update_member_and_emit(
             main_list_idx,
             member_obj,
