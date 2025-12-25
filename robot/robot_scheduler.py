@@ -116,7 +116,7 @@ class SmartScheduler:
         elif result_type == ResultType.NO_DATES:
             cooldown = random.uniform(15 * 60, 60 * 60)
             self.mode = "sleep"
-        elif result_type == ResultType.ERROR_RETRYABLE:
+        elif result_type in {ResultType.ERROR_RETRYABLE, ResultType.NETWORK_ERROR}:
             cooldown = random.uniform(10 * 60, 25 * 60)
             self.mode = "sleep"
         elif result_type == ResultType.RATE_LIMIT:

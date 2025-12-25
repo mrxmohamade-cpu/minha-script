@@ -62,7 +62,7 @@ class RobotController:
             return f"لا توجد مواعيد. تهدئة {minutes} د"
         if result_type == ResultType.RATE_LIMIT:
             return "الخادم مشغول (طلبات كثيرة). تم إيقاف الروبوت مؤقتًا لحماية الحساب."
-        if result_type == ResultType.ERROR_RETRYABLE:
+        if result_type in {ResultType.ERROR_RETRYABLE, ResultType.NETWORK_ERROR}:
             return f"شبكة غير مستقرة. تهدئة {minutes} د"
         if result_type == ResultType.HAS_DATES:
             return "تواريخ متاحة. وضع الطوارئ"

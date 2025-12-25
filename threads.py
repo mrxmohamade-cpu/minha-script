@@ -454,7 +454,7 @@ class MonitoringThread(QThread):
                             self.update_member_gui_signal.emit(initial_scan_idx, member_to_process.status, member_to_process.last_activity_detail, get_icon_name_for_status(member_to_process.status))
                             self.member_being_processed_signal.emit(initial_scan_idx, False)
                             if self.robot_enabled:
-                                self._record_robot_result(member_to_process, ResultType.INVALID)
+                                self._record_robot_result(member_to_process, ResultType.BENEFICIARY)
                             if self.is_running: time.sleep(SHORT_SKIP_DELAY_SECONDS)
                             continue
 
@@ -620,7 +620,7 @@ class MonitoringThread(QThread):
                     self.update_member_gui_signal.emit(main_list_idx, member_to_process.status, member_to_process.last_activity_detail, get_icon_name_for_status(member_to_process.status))
                     self.member_being_processed_signal.emit(main_list_idx, False) 
                     if self.robot_enabled:
-                        self._record_robot_result(member_to_process, ResultType.INVALID)
+                        self._record_robot_result(member_to_process, ResultType.BENEFICIARY)
                     if self.is_running: time.sleep(SHORT_SKIP_DELAY_SECONDS)
                     self.current_member_index_to_process = (main_list_idx + 1) % len(self.members_list_ref) if self.members_list_ref else 0
                     continue 
