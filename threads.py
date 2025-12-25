@@ -254,7 +254,7 @@ class MonitoringThread(QThread):
     global_log_signal = pyqtSignal(str, bool, object, int) 
     member_being_processed_signal = pyqtSignal(int, bool)    
     countdown_update_signal = pyqtSignal(str) 
-    robot_status_signal = pyqtSignal(str, str, str)
+    robot_status_signal = pyqtSignal(str, str, str, int)
     robot_alert_signal = pyqtSignal(str)
 
     SITE_CHECK_INTERVAL_SECONDS = 60 
@@ -738,13 +738,13 @@ class MonitoringThread(QThread):
 
     def _emit_robot_status(self):
         if not self.robot_enabled:
-            self.robot_status_signal.emit("NORMAL", "-", "الروبوت متوقف")
+            self.robot_status_signal.emit("NORMAL", "-", "الروبوت متوقف", 0)
             return
         self.robot.update_mode()
         next_check_ts = self.robot.scheduler.rate_limiter.next_allowed_at
         next_check_text = time.strftime("%H:%M:%S", time.localtime(next_check_ts)) if next_check_ts else "-"
         last_alert = self.robot.last_alert()
-        self.robot_status_signal.emit(self.robot.scheduler.mode, next_check_text, last_alert)
+        self.robot_status_signal.emit(self.robot.scheduler.mode, next_check_text, last_alert, self.robot.round_status())
 
     def _record_robot_result(self, member_obj, result_type):
         member_key = self._get_member_key(member_obj)
@@ -1191,15 +1191,25 @@ class SingleMemberCheckThread(QThread):
     member_processing_finished_signal = pyqtSignal(int)      
     global_log_signal = pyqtSignal(str, bool, object, int) 
 
-    def __init__(self, member, index, api_client, settings, parent=None):
+    def __init__(self, member, index, api_client, settings, parent=None): 
         super().__init__(parent)
         self.member = member 
-        self.index = index   
-        self.api_client = api_client
+        self.index = index
+        self.api_client = api_client 
         self.settings = settings 
         self.is_running = True 
+        robot_settings = {
+            "base_global_interval_sec": max(6.0, float(self.settings.get("robot_base_interval_sec", 8))),
+            "burst_duration_min": int(self.settings.get("robot_burst_duration_min", 25)),
+            "freeze_has_rdv_days": int(self.settings.get("robot_freeze_has_rdv_days", 7)),
+            "rate_limit_pause_min_sec": int(self.settings.get("robot_rate_limit_pause_min_sec", 45 * 60)),
+            "rate_limit_pause_max_sec": int(self.settings.get("robot_rate_limit_pause_max_sec", 120 * 60)),
+            "rate_limit_window_sec": int(self.settings.get("robot_rate_limit_window_sec", 15 * 60)),
+            "rate_limit_threshold": int(self.settings.get("robot_rate_limit_threshold", 2)),
+        }
+        self.robot = RobotController(self.api_client, robot_settings)
 
-    def stop(self):
+    def stop(self): 
         self.is_running = False
         logger.info(f"طلب إيقاف خيط الفحص الفردي للعضو: {self.member.nin}")
 

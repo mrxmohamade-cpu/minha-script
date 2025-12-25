@@ -1276,6 +1276,14 @@ class AnemApp(QMainWindow):
             member = self.members_list[original_member_index]
             member_display_name = self._get_member_display_name_with_index(member, original_member_index)
 
+            if self.monitoring_thread and getattr(self.monitoring_thread, "robot_enabled", False):
+                member_key = member.nin or member.wassit_no
+                if member_key and not self.monitoring_thread.robot.can_manual_check(member_key):
+                    next_allowed = self.monitoring_thread.robot.scheduler.state_for(member_key).next_allowed_check_at
+                    resume_text = time.strftime("%H:%M", time.localtime(next_allowed)) if next_allowed else "--:--"
+                    self._show_toast(f"العضو في تبريد حتى {resume_text}", type="warning", title="فحص فوري")
+                    return
+
             if member.is_processing: 
                  self._show_toast(f"العضو '{member_display_name}' قيد المعالجة حاليًا. يرجى الانتظار.", type="warning", title="فحص فوري")
                  return
@@ -2599,7 +2607,7 @@ class AnemApp(QMainWindow):
                 self.countdown_label.setToolTip("لا يوجد انتظار حالي")
                 self.latest_countdown_text = "لا يوجد انتظار حالي"
 
-    def update_robot_status_panel(self, mode, next_check_text, last_alert):
+    def update_robot_status_panel(self, mode, next_check_text, last_alert, round_index):
         if not self.robot_status_frame:
             return
         if mode == "burst":
@@ -2611,7 +2619,7 @@ class AnemApp(QMainWindow):
         else:
             mode_label = "SLEEP"
         self.robot_mode_label.setText(f"الوضع: {mode_label}")
-        self.robot_next_label.setText(f"الفحص التالي: {next_check_text}")
+        self.robot_next_label.setText(f"الجولة: {round_index} • الفحص التالي: {next_check_text}")
         self.robot_alert_label.setText(f"آخر تنبيه: {last_alert}")
 
     def _handle_robot_alert(self, message):

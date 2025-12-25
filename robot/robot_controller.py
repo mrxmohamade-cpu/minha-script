@@ -14,9 +14,11 @@ class RobotController:
         self.repo = RobotRepository()
         self.scheduler = SmartScheduler(settings)
         self.scheduler.hydrate(self.repo.load_member_states())
+        self.round_id = 0
 
     def start_round(self):
         self.scheduler.start_round()
+        self.round_id = self.scheduler.round_id
 
     def can_process(self, member_id):
         return self.scheduler.can_process(member_id, time.time())
@@ -24,8 +26,14 @@ class RobotController:
     def next_wait_seconds(self):
         return self.scheduler.next_wait_seconds(time.time())
 
+    def can_manual_check(self, member_id):
+        return self.scheduler.can_process(member_id, time.time())
+
     def update_mode(self):
         self.scheduler.update_mode()
+
+    def round_status(self):
+        return self.round_id
 
     def record_result(self, member_id, result_type, http_status=None, step="cycle", detail="", duration_ms=0):
         cooldown, mode = self.scheduler.record_result(member_id, result_type, http_status=http_status)
