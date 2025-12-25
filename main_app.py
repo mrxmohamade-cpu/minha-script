@@ -22,7 +22,7 @@ from PyQt5.QtGui import QIcon, QColor, QPalette, QDesktopServices, QFontDatabase
 
 from firebase_service import FirebaseService
 from gui_components import (
-    ToastNotification, AddMemberDialog, EditMemberDialog,
+    NotificationManager, AddMemberDialog, EditMemberDialog,
     SettingsDialog, ViewMemberDialog, ActivationDialog, SubscriptionDetailsDialog,
     MessagesDialog # تمت إضافة MessagesDialog
 )
@@ -1821,9 +1821,14 @@ class AnemApp(QMainWindow):
             logger.debug(f"Toast for message_id '{message_id}' already shown. Skipping.")
             return
 
-        toast = ToastNotification(self) 
-        self.toast_notifications.append(toast) 
-        toast.showMessage(display_message, title=display_title, type=type, duration=duration, parent_window=self, message_id=message_id) 
+        NotificationManager(self).enqueue(
+            self,
+            display_message,
+            title=display_title,
+            type=type,
+            duration=duration,
+            message_id=message_id,
+        )
         
         if message_id:
             self.toast_shown_for_message_ids.add(message_id)

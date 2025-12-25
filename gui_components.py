@@ -6,14 +6,16 @@ from PyQt5.QtWidgets import (
     QScrollArea, QFrame,QSizePolicy, QGridLayout, QGraphicsDropShadowEffect, QGraphicsOpacityEffect,
     QListWidget, QListWidgetItem, QTextBrowser # تمت إضافة QListWidget و QTextBrowser
 )
-from PyQt5.QtCore import Qt, QTimer, QPoint, QEasingCurve, QPropertyAnimation, QRegularExpression, pyqtSignal, QDateTime, QEvent
+from PyQt5.QtCore import Qt, QTimer, QPoint, QEasingCurve, QPropertyAnimation, QRegularExpression, pyqtSignal, QDateTime, QEvent, QUrl, QObject
 from PyQt5.QtGui import QIcon, QRegularExpressionValidator, QColor, QPixmap, QFont, QTextDocument # تمت إضافة QTextDocument
+from PyQt5.QtMultimedia import QSoundEffect
 
 from utils import QColorConstants # Assuming utils.py is available and contains QColorConstants
 import datetime # Ensure datetime is imported for type checking
 
 
 class ToastNotification(QWidget):
+    closed = pyqtSignal()
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.ToolTip | Qt.WindowStaysOnTopHint)
@@ -88,6 +90,7 @@ class ToastNotification(QWidget):
     def _on_animation_finished(self):
         if self.windowOpacity() == 0:
             self.hide()
+            self.closed.emit()
             self.deleteLater() # Clean up the widget after hiding
 
     def _start_fade_out(self):
@@ -174,6 +177,67 @@ class ToastNotification(QWidget):
         self.animation.setEndValue(1.0) # Fade in
         self.animation.start()
         self.timer.start(duration)
+
+
+class NotificationManager(QObject):
+    _instance = None
+
+    def __new__(cls, parent=None):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __init__(self, parent=None):
+        if getattr(self, "_initialized", False):
+            return
+        super().__init__(parent)
+        self._initialized = True
+        self._queue = []
+        self._current_toast = None
+        self._recent_signatures = {}
+        self._sound = QSoundEffect()
+        self._sound.setLoopCount(1)
+        self._sound.setVolume(0.6)
+
+    def enqueue(self, parent_window, message, title=None, type="info", duration=4000, message_id=None):
+        signature = f"{title or ''}_{message}_{type}"
+        now_ts = QDateTime.currentSecsSinceEpoch()
+        last_ts = self._recent_signatures.get(signature)
+        if last_ts and now_ts - last_ts < 5:
+            return
+        self._recent_signatures[signature] = now_ts
+
+        self._queue.append((parent_window, message, title, type, duration, message_id))
+        if not self._current_toast:
+            self._show_next()
+
+    def _show_next(self):
+        if not self._queue:
+            self._current_toast = None
+            return
+        parent_window, message, title, type, duration, message_id = self._queue.pop(0)
+        toast = ToastNotification(parent_window)
+        self._current_toast = toast
+        toast.closed.connect(self._on_toast_closed)
+        self._play_sound(type)
+        toast.showMessage(message, title=title, type=type, duration=duration, parent_window=parent_window, message_id=message_id)
+
+    def _on_toast_closed(self):
+        self._current_toast = None
+        self._show_next()
+
+    def _play_sound(self, toast_type):
+        sound_map = {
+            "success": "sounds/success.wav",
+            "warning": "sounds/warning.wav",
+            "error": "sounds/error.wav",
+            "info": "sounds/info.wav",
+        }
+        sound_path = sound_map.get(toast_type)
+        if not sound_path:
+            return
+        self._sound.setSource(QUrl.fromLocalFile(sound_path))
+        self._sound.play()
 
 
 class AddMemberDialog(QDialog):
