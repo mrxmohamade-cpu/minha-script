@@ -7,9 +7,11 @@ class ResultType(str, Enum):
     NO_DATES = "NO_DATES"
     HAS_RDV = "HAS_RDV"
     NEEDS_PREINSCRIPTION = "NEEDS_PREINSCRIPTION"
-    INVALID = "INVALID"
+    INELIGIBLE = "INELIGIBLE"
+    COMPLETED = "COMPLETED"
+    BENEFICIARY = "BENEFICIARY"
     RATE_LIMIT = "RATE_LIMIT"
-    NETWORK_ERROR = "NETWORK_ERROR"
+    ERROR_RETRYABLE = "ERROR_RETRYABLE"
     SERVER_ERROR = "SERVER_ERROR"
     PROTECTED_STEP = "PROTECTED_STEP"
     UNKNOWN = "UNKNOWN"
@@ -30,15 +32,19 @@ class ResultClassifier:
             return ResultType.NETWORK_ERROR
 
         if status in ["فشل التحقق", "فشل جلب المعلومات", "فشل جلب التواريخ", "فشل الحجز", "خطأ في المعالجة"]:
-            return ResultType.NETWORK_ERROR
+            return ResultType.ERROR_RETRYABLE
         if status in ["لا توجد مواعيد", "تم التحقق", "تم جلب المعلومات", "جاري جلب الاسم..."]:
             return ResultType.NO_DATES
-        if status in ["تم الحجز", "لديه موعد مسبق", "مكتمل", "مستفيد حاليًا من المنحة"]:
+        if status in ["تم الحجز", "لديه موعد مسبق"]:
             return ResultType.HAS_RDV
+        if status in ["مكتمل"]:
+            return ResultType.COMPLETED
+        if status in ["مستفيد حاليًا من المنحة"]:
+            return ResultType.BENEFICIARY
         if status in ["يتطلب تسجيل مسبق"]:
             return ResultType.NEEDS_PREINSCRIPTION
         if status in ["غير مؤهل للحجز", "بيانات الإدخال خاطئة", "غير مؤهل مبدئيًا"]:
-            return ResultType.INVALID
+            return ResultType.INELIGIBLE
         if status in ["جاري البحث عن مواعيد..."] and data and data.get("dates"):
             return ResultType.HAS_DATES
         return ResultType.UNKNOWN

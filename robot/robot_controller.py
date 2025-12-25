@@ -62,7 +62,7 @@ class RobotController:
             return f"لا توجد مواعيد. تهدئة {minutes} د"
         if result_type == ResultType.RATE_LIMIT:
             return "الخادم مشغول (طلبات كثيرة). تم إيقاف الروبوت مؤقتًا لحماية الحساب."
-        if result_type == ResultType.NETWORK_ERROR:
+        if result_type == ResultType.ERROR_RETRYABLE:
             return f"شبكة غير مستقرة. تهدئة {minutes} د"
         if result_type == ResultType.HAS_DATES:
             return "تواريخ متاحة. وضع الطوارئ"
@@ -70,8 +70,12 @@ class RobotController:
             return "تم العثور على موعد"
         if result_type == ResultType.NEEDS_PREINSCRIPTION:
             return "يتطلب تسجيل مسبق"
-        if result_type == ResultType.INVALID:
+        if result_type == ResultType.INELIGIBLE:
             return "غير مؤهل"
+        if result_type == ResultType.COMPLETED:
+            return "مكتمل"
+        if result_type == ResultType.BENEFICIARY:
+            return "مستفيد"
         if result_type == ResultType.PROTECTED_STEP:
             return "الخطوة محمية وتتطلب تدخل يدوي"
         return "متابعة ذكية"

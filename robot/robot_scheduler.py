@@ -114,9 +114,9 @@ class SmartScheduler:
             burst_min = self.settings["burst_duration_min"]
             self.burst_until = max(self.burst_until, now_ts + (burst_min * 60))
         elif result_type == ResultType.NO_DATES:
-            cooldown = random.uniform(8 * 60 * 60, 18 * 60 * 60)
+            cooldown = random.uniform(15 * 60, 60 * 60)
             self.mode = "sleep"
-        elif result_type == ResultType.NETWORK_ERROR:
+        elif result_type == ResultType.ERROR_RETRYABLE:
             cooldown = random.uniform(10 * 60, 25 * 60)
             self.mode = "sleep"
         elif result_type == ResultType.RATE_LIMIT:
@@ -144,8 +144,8 @@ class SmartScheduler:
             cooldown = random.uniform(3 * 24 * 60 * 60, 7 * 24 * 60 * 60)
             self.mode = "sleep"
             state.monitoring_mode = "SKIP_LONG"
-        elif result_type == ResultType.INVALID:
-            cooldown = 30 * 24 * 60 * 60
+        elif result_type in [ResultType.INELIGIBLE, ResultType.COMPLETED, ResultType.BENEFICIARY]:
+            cooldown = 0
             self.mode = "sleep"
             state.monitoring_mode = "DISABLED"
         elif result_type == ResultType.SERVER_ERROR:

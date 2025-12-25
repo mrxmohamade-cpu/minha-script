@@ -374,6 +374,17 @@ class MonitoringThread(QThread):
                     if not self.is_running:
                         break
                     continue
+                if now_ts - self._last_excluded_log_at > 600:
+                    self._last_excluded_log_at = now_ts
+                    earliest_active = min(
+                        (self.robot.scheduler.state_for(self._get_member_key(m)).next_allowed_check_at for m in eligible_members),
+                        default=0,
+                    )
+                    earliest_dt = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(earliest_active)) if earliest_active else "--"
+                    self._emit_global_log(
+                        f"ملخص الروبوت: eligible={len(eligible_members)}, cooling={cooling_members}, excluded={excluded_members}, earliest_next={earliest_dt}",
+                        is_general=True,
+                    )
             if self.is_connection_lost_mode:
                 self._emit_global_log(f"الاتصال بالخادم مفقود. جاري فحص توفر الموقع...")
                 site_available, site_check_error = self.api_client.check_main_site_availability() 
@@ -806,11 +817,17 @@ class MonitoringThread(QThread):
         explanation = self.robot.explain_result(result_type, cooldown_seconds)
         state = self.robot.scheduler.state_for(member_key)
         if state.monitoring_mode != "ACTIVE":
-            member_obj.set_activity_detail(
-                "مستبعد من المراقبة: مكتمل/مستفيد/غير مؤهل",
-                is_error=False,
-            )
-        if result_type in [ResultType.RATE_LIMIT, ResultType.NETWORK_ERROR, ResultType.HAS_DATES, ResultType.PROTECTED_STEP, ResultType.SERVER_ERROR]:
+            excluded_reason = "مستبعد من المراقبة"
+            if result_type == ResultType.COMPLETED:
+                excluded_reason = "مستبعد: مكتمل"
+            elif result_type == ResultType.BENEFICIARY:
+                excluded_reason = "مستبعد: مستفيد"
+            elif result_type == ResultType.INELIGIBLE:
+                excluded_reason = "مستبعد: غير مؤهل"
+            elif result_type == ResultType.HAS_RDV:
+                excluded_reason = "مستبعد: لديه موعد"
+            member_obj.set_activity_detail(excluded_reason, is_error=False)
+        if result_type in [ResultType.RATE_LIMIT, ResultType.ERROR_RETRYABLE, ResultType.HAS_DATES, ResultType.PROTECTED_STEP, ResultType.SERVER_ERROR]:
             self.robot_alert_signal.emit(explanation)
         if result_type == ResultType.PROTECTED_STEP:
             self._emit_global_log("تم اكتشاف خطوة محمية. يتطلب التدخل اليدوي.", is_general=True)
