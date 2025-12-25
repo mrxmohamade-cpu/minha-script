@@ -1008,7 +1008,8 @@ class ActivationDialog(QDialog):
         return self.activation_code_input.text().strip().upper()
 
     def show_status_message(self, message, is_error=False, is_warning=False, is_success=False, is_waiting=False):
-        display_message = (message or "").splitlines()[0].strip()
+        lines = (message or "").splitlines()
+        display_message = lines[0].strip() if lines else ""
         if len(display_message) > 40:
             display_message = f"{display_message[:37]}..."
         
