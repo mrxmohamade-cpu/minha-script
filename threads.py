@@ -272,6 +272,7 @@ class MonitoringThread(QThread):
         self.current_member_index_to_process = 0 
         self.consecutive_network_error_trigger_count = 0 
         self.initial_scan_completed = False 
+        self._last_excluded_log_at = 0
 
     def _apply_settings(self):
         self.interval_ms = self.settings.get(SETTING_MONITORING_INTERVAL, DEFAULT_SETTINGS[SETTING_MONITORING_INTERVAL]) * 60 * 1000
@@ -348,6 +349,31 @@ class MonitoringThread(QThread):
                 if not self.is_running:
                     break
                 continue
+
+            if self.robot_enabled:
+                eligible_members = []
+                excluded_members = 0
+                cooling_members = 0
+                now_ts = time.time()
+                for member_obj in list(self.members_list_ref):
+                    member_key = self._get_member_key(member_obj)
+                    state = self.robot.scheduler.state_for(member_key)
+                    if state.monitoring_mode != "ACTIVE":
+                        excluded_members += 1
+                        continue
+                    if now_ts < state.next_allowed_check_at:
+                        cooling_members += 1
+                    eligible_members.append(member_obj)
+
+                if not eligible_members:
+                    if now_ts - self._last_excluded_log_at > 600:
+                        self._last_excluded_log_at = now_ts
+                        self._emit_global_log("لا يوجد أعضاء مؤهلين للمراقبة.", is_general=True)
+                    idle_wait = int(random.uniform(30 * 60, 120 * 60))
+                    self._wait_with_countdown(idle_wait, "استئناف الروبوت بعد: ")
+                    if not self.is_running:
+                        break
+                    continue
             if self.is_connection_lost_mode:
                 self._emit_global_log(f"الاتصال بالخادم مفقود. جاري فحص توفر الموقع...")
                 site_available, site_check_error = self.api_client.check_main_site_availability() 
@@ -712,7 +738,7 @@ class MonitoringThread(QThread):
             if next_wait <= 0:
                 next_wait = int(self.interval_ms / 1000)
             if self.robot_enabled:
-                resume_at = time.strftime("%H:%M", time.localtime(time.time() + next_wait))
+                resume_at = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() + next_wait))
                 logger.info(f"ROBOT_SLEEP until {resume_at} (reason: round complete)")
             self._wait_with_countdown(next_wait, "الدورة التالية بعد: ")
             if not self.is_running: break
@@ -762,7 +788,9 @@ class MonitoringThread(QThread):
         self.robot_status_signal.emit(self.robot.scheduler.mode, next_check_text, last_alert, self.robot.round_status())
         excluded = self.robot.scheduler.excluded_summary()
         excluded_total = excluded.get("DISABLED", 0) + excluded.get("SKIP_LONG", 0)
-        if excluded_total:
+        now_ts = time.time()
+        if excluded_total and now_ts - self._last_excluded_log_at > 600:
+            self._last_excluded_log_at = now_ts
             self._emit_global_log(
                 f"تم استبعاد {excluded_total} أعضاء (مكتمل/مستفيد/غير مؤهل).",
                 is_general=True,

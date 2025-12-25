@@ -8,6 +8,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt, QTimer, QPoint, QEasingCurve, QPropertyAnimation, QRegularExpression, pyqtSignal, QDateTime, QEvent, QUrl, QObject
 from PyQt5.QtGui import QIcon, QRegularExpressionValidator, QColor, QPixmap, QFont, QTextDocument # تمت إضافة QTextDocument
+import os
 from PyQt5.QtMultimedia import QSoundEffect
 
 from utils import QColorConstants # Assuming utils.py is available and contains QColorConstants
@@ -199,6 +200,9 @@ class NotificationManager(QObject):
         self._sound = QSoundEffect()
         self._sound.setLoopCount(1)
         self._sound.setVolume(0.6)
+        self._sound_enabled = True
+        self._sound_error_logged = False
+        self._sound.statusChanged.connect(self._handle_sound_status)
 
     def enqueue(self, parent_window, message, title=None, type="info", duration=4000, message_id=None):
         signature = f"{title or ''}_{message}_{type}"
@@ -228,6 +232,8 @@ class NotificationManager(QObject):
         self._show_next()
 
     def _play_sound(self, toast_type):
+        if not self._sound_enabled:
+            return
         sound_map = {
             "success": "sounds/success.wav",
             "warning": "sounds/warning.wav",
@@ -237,8 +243,19 @@ class NotificationManager(QObject):
         sound_path = sound_map.get(toast_type)
         if not sound_path:
             return
+        if not os.path.exists(sound_path):
+            if not self._sound_error_logged:
+                self._sound_error_logged = True
+            self._sound_enabled = False
+            return
         self._sound.setSource(QUrl.fromLocalFile(sound_path))
         self._sound.play()
+
+    def _handle_sound_status(self):
+        if self._sound.status() == QSoundEffect.Error:
+            if not self._sound_error_logged:
+                self._sound_error_logged = True
+            self._sound_enabled = False
 
 
 class AddMemberDialog(QDialog):
