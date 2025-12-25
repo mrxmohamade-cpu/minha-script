@@ -771,7 +771,7 @@ class ActivationDialog(QDialog):
         self.activation_code_input.setAlignment(Qt.AlignCenter)
         self.activation_code_input.setMinimumHeight(50)
         self.activation_code_input.setObjectName("ActivationCodeInput")
-        key_icon = QIcon(self.style().standardIcon(QStyle.SP_DialogPasswordIcon).pixmap(18, 18))
+        key_icon = QIcon(self.style().standardIcon(QStyle.SP_FileDialogDetailedView).pixmap(18, 18))
         key_action = self.activation_code_input.addAction(key_icon, QLineEdit.LeadingPosition)
         key_action.setEnabled(False)
         self.activation_code_input.installEventFilter(self)
