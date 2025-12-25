@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import (
     QScrollArea, QFrame,QSizePolicy, QGridLayout, QGraphicsDropShadowEffect, QGraphicsOpacityEffect,
     QListWidget, QListWidgetItem, QTextBrowser # تمت إضافة QListWidget و QTextBrowser
 )
-from PyQt5.QtCore import Qt, QTimer, QPoint, QEasingCurve, QPropertyAnimation, QRegularExpression, pyqtSignal, QDateTime
+from PyQt5.QtCore import Qt, QTimer, QPoint, QEasingCurve, QPropertyAnimation, QRegularExpression, pyqtSignal, QDateTime, QEvent
 from PyQt5.QtGui import QIcon, QRegularExpressionValidator, QColor, QPixmap, QFont, QTextDocument # تمت إضافة QTextDocument
 
 from utils import QColorConstants # Assuming utils.py is available and contains QColorConstants
@@ -742,7 +742,7 @@ class ActivationDialog(QDialog):
 
         self.left_icon_label = QLabel(self)
         self.left_icon_label.setObjectName("ActivationLeftIcon")
-        self.left_icon_label.setPixmap(self.style().standardIcon(QStyle.SP_MessageBoxInformation).pixmap(90, 90))
+        self.left_icon_label.setPixmap(self.style().standardIcon(QStyle.SP_MessageBoxInformation).pixmap(110, 110))
         self.left_icon_label.setAlignment(Qt.AlignCenter)
         left_layout.addStretch(1)
         left_layout.addWidget(self.left_icon_label)
@@ -760,42 +760,49 @@ class ActivationDialog(QDialog):
         right_layout.addWidget(self.title_label)
 
         input_frame = QFrame(self)
+        self.input_frame = input_frame
         input_frame.setObjectName("ActivationInputFrame")
         input_layout = QHBoxLayout(input_frame)
         input_layout.setContentsMargins(12, 10, 12, 10)
         input_layout.setSpacing(8)
 
         self.activation_code_input = QLineEdit(self)
-        self.activation_code_input.setPlaceholderText("XXXX-XXXX-XXXX-XXXX")
+        self.activation_code_input.setPlaceholderText("أدخل رمز التفعيل")
         self.activation_code_input.setAlignment(Qt.AlignCenter)
-        self.activation_code_input.setMinimumHeight(46)
+        self.activation_code_input.setMinimumHeight(50)
         self.activation_code_input.setObjectName("ActivationCodeInput")
+        key_icon = QIcon(self.style().standardIcon(QStyle.SP_DialogPasswordIcon).pixmap(18, 18))
+        key_action = self.activation_code_input.addAction(key_icon, QLineEdit.LeadingPosition)
+        key_action.setEnabled(False)
+        self.activation_code_input.installEventFilter(self)
         input_layout.addWidget(self.activation_code_input, 1)
         right_layout.addWidget(input_frame)
+        self._apply_input_focus_glow(False)
 
         helper_frame = QFrame(self)
         helper_frame.setObjectName("ActivationHelperFrame")
-        helper_layout = QHBoxLayout(helper_frame)
-        helper_layout.setContentsMargins(10, 8, 10, 8)
+        helper_layout = QVBoxLayout(helper_frame)
+        helper_layout.setContentsMargins(14, 12, 14, 12)
         helper_layout.setSpacing(10)
 
         self.helper_icon = QLabel(self)
         self.helper_icon.setObjectName("ActivationHelperIcon")
-        self.helper_icon.setPixmap(self.style().standardIcon(QStyle.SP_MessageBoxInformation).pixmap(28, 28))
+        self.helper_icon.setPixmap(self.style().standardIcon(QStyle.SP_DialogApplyButton).pixmap(80, 80))
         self.helper_icon.setAlignment(Qt.AlignCenter)
-        helper_layout.addWidget(self.helper_icon)
+        helper_layout.addWidget(self.helper_icon, 0, Qt.AlignCenter)
 
         self.helper_label = QLabel("التفعيل آمن ومربوط بالجهاز", self)
         self.helper_label.setWordWrap(True)
+        self.helper_label.setAlignment(Qt.AlignCenter)
         self.helper_label.setObjectName("ActivationHelperLabel")
-        helper_layout.addWidget(self.helper_label, 1)
+        helper_layout.addWidget(self.helper_label, 0, Qt.AlignCenter)
         right_layout.addWidget(helper_frame)
 
         self.status_message_area = QTextEdit(self)
         self.status_message_area.setReadOnly(True)
         self.status_message_area.setObjectName("ActivationStatusMessageArea")
-        self.status_message_area.setMinimumHeight(54)
-        self.status_message_area.setMaximumHeight(60)
+        self.status_message_area.setMinimumHeight(52)
+        self.status_message_area.setMaximumHeight(56)
         self.status_message_area.setAlignment(Qt.AlignCenter)
         self.status_message_area.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.status_message_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -810,13 +817,18 @@ class ActivationDialog(QDialog):
         self.activate_button = QPushButton("تفعيل", self)
         self.activate_button.setIcon(self.style().standardIcon(QStyle.SP_DialogApplyButton))
         self.activate_button.setObjectName("ActivationActivateButton")
-        self.activate_button.setFixedHeight(46)
+        self.activate_button.setFixedHeight(52)
+        button_shadow = QGraphicsDropShadowEffect(self)
+        button_shadow.setBlurRadius(18)
+        button_shadow.setColor(QColor(77, 121, 255, 140))
+        button_shadow.setOffset(0, 4)
+        self.activate_button.setGraphicsEffect(button_shadow)
         self.buttons_layout.addWidget(self.activate_button)
 
         self.cancel_button = QPushButton("إلغاء", self)
         self.cancel_button.setIcon(self.style().standardIcon(QStyle.SP_DialogCancelButton))
         self.cancel_button.setObjectName("ActivationCancelButton")
-        self.cancel_button.setFixedHeight(46)
+        self.cancel_button.setFixedHeight(48)
         self.buttons_layout.addWidget(self.cancel_button)
 
         right_layout.addLayout(self.buttons_layout)
@@ -850,8 +862,8 @@ class ActivationDialog(QDialog):
             }
             QLabel#ActivationLeftIcon {
                 background-color: rgba(255, 255, 255, 0.08);
-                border-radius: 24px;
-                padding: 18px;
+                border-radius: 28px;
+                padding: 20px;
             }
             QFrame#ActivationRightPanel {
                 background-color: #1F2633;
@@ -865,43 +877,49 @@ class ActivationDialog(QDialog):
             }
             QFrame#ActivationInputFrame {
                 background-color: #1B222F;
-                border: 1px solid #303A4F;
+                border: 1px solid #2F3B52;
                 border-radius: 16px;
             }
-            QLineEdit#ActivationCodeInput:focus {
-                border: none;
+            QFrame#ActivationInputFrame[focused="true"] {
+                border: 1px solid #5B86FF;
+            }
+            QFrame#ActivationInputFrame:focus {
+                border: 1px solid #5B86FF;
             }
             QLineEdit#ActivationCodeInput {
-                font-size: 15pt;
+                font-size: 14.5pt;
                 font-family: "Tajawal Medium";
                 background-color: transparent;
                 color: #EEF2FF;
                 border: none;
                 padding: 8px 10px;
             }
+            QLineEdit#ActivationCodeInput:focus {
+                color: #FFFFFF;
+            }
             QFrame#ActivationHelperFrame {
                 background-color: #1A202D;
                 border: 1px solid #2B3345;
-                border-radius: 14px;
+                border-radius: 16px;
             }
             QLabel#ActivationHelperIcon {
-                background-color: rgba(93, 131, 255, 0.2);
-                border-radius: 16px;
-                padding: 6px;
+                background-color: rgba(93, 131, 255, 0.18);
+                border-radius: 22px;
+                padding: 10px;
             }
             QLabel#ActivationHelperLabel {
                 color: #CBD4E8;
-                font-size: 10pt;
+                font-size: 10.5pt;
                 font-family: "Tajawal Medium";
             }
             QTextEdit#ActivationStatusMessageArea {
                 font-family: "Tajawal Regular";
-                font-size: 10pt;
-                border: 1px solid #2B3548;
-                border-radius: 14px;
+                font-size: 10.5pt;
+                border: 1px solid #2A3447;
+                border-radius: 16px;
                 background-color: #171D29;
                 color: #C3CDDF;
-                padding: 14px;
+                padding: 10px;
             }
             QPushButton#ActivationActivateButton {
                 background-color: qlineargradient(
@@ -910,8 +928,8 @@ class ActivationDialog(QDialog):
                 );
                 color: #F7F9FF;
                 font-family: "Tajawal Bold";
-                padding: 10px 28px;
-                border-radius: 14px;
+                padding: 12px 32px;
+                border-radius: 16px;
                 border: none;
             }
             QPushButton#ActivationActivateButton:hover {
@@ -919,7 +937,7 @@ class ActivationDialog(QDialog):
                     x1:0, y1:0, x2:1, y2:0,
                     stop:0 #5B86FF, stop:1 #7AB4FF
                 );
-                border: 1px solid rgba(122, 180, 255, 0.8);
+                border: 1px solid rgba(122, 180, 255, 0.9);
             }
             QPushButton#ActivationActivateButton:pressed {
                 background-color: qlineargradient(
@@ -946,6 +964,25 @@ class ActivationDialog(QDialog):
                 background-color: #202636;
             }
         """)
+
+    def _apply_input_focus_glow(self, focused):
+        if not hasattr(self, "_input_shadow"):
+            self._input_shadow = QGraphicsDropShadowEffect(self)
+            self.input_frame.setGraphicsEffect(self._input_shadow)
+        self._input_shadow.setBlurRadius(18 if focused else 8)
+        self._input_shadow.setColor(QColor(91, 134, 255, 120 if focused else 30))
+        self._input_shadow.setOffset(0, 0)
+        self.input_frame.setProperty("focused", focused)
+        self.input_frame.style().unpolish(self.input_frame)
+        self.input_frame.style().polish(self.input_frame)
+
+    def eventFilter(self, obj, event):
+        if obj is self.activation_code_input:
+            if event.type() == QEvent.FocusIn:
+                self._apply_input_focus_glow(True)
+            elif event.type() == QEvent.FocusOut:
+                self._apply_input_focus_glow(False)
+        return super().eventFilter(obj, event)
 
     def _handle_activate_clicked(self):
         self.activation_attempted.emit(self.get_activation_code())
