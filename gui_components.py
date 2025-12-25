@@ -991,7 +991,9 @@ class ActivationDialog(QDialog):
         return self.activation_code_input.text().strip().upper()
 
     def show_status_message(self, message, is_error=False, is_warning=False, is_success=False, is_waiting=False):
-        display_message = message
+        display_message = (message or "").splitlines()[0].strip()
+        if len(display_message) > 40:
+            display_message = f"{display_message[:37]}..."
         
         style_sheet_base = "font-family: 'Tajawal Regular'; font-weight: normal; padding: 8px;" 
         text_color = "#D8DEE9" 
