@@ -128,18 +128,9 @@ class AnemAPIClient:
                 logger.debug(f"استجابة الخادم لـ {url}: {response.status_code}")
 
                 if response.status_code == 429:
-                    actual_delay_to_use = current_delay_429
-                    logger.warning(f"خطأ 429 (طلبات كثيرة جدًا) من الخادم لـ {url}. الانتظار {actual_delay_to_use} ثانية.")
+                    logger.warning(f"خطأ 429 (طلبات كثيرة جدًا) من الخادم لـ {url}.")
                     self._rate_limiter.register_penalty(endpoint, ENDPOINT_429_COOLDOWN)
-                    if current_retry >= max_retries_for_this_call:
-                        final_429_error = "طلبات كثيرة جدًا للخادم (429). يرجى الانتظار والمحاولة لاحقًا."
-                        logger.error(f"تم تجاوز الحد الأقصى لإعادة المحاولة (429) لـ {url}. الرسالة المُعادة: {final_429_error}")
-                        return None, final_429_error
-                    time.sleep(actual_delay_to_use)
-                    current_delay_429 = min(current_delay_429 * 2, MAX_BACKOFF_DELAY)
-                    current_retry += 1
-                    last_error_message_for_request = "طلبات كثيرة جدًا (429)" # تحديث رسالة الخطأ الأخيرة
-                    continue
+                    return None, "RATE_LIMIT_429"
 
                 actual_delay_to_use = current_delay_general # إعادة التعيين إلى التأخير العام إذا لم يكن الخطأ 429
                 response.raise_for_status()

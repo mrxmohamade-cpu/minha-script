@@ -46,6 +46,12 @@ class SmartScheduler:
         )
         self.mode = "sleep"
         self.burst_until = 0.0
+        self.pause_until = 0.0
+        self.rate_limit_hits = []
+
+    def is_paused(self, now_ts=None):
+        now_ts = now_ts or time.time()
+        return now_ts < self.pause_until
 
     def start_round(self):
         self.round_id += 1
@@ -60,6 +66,8 @@ class SmartScheduler:
 
     def can_process(self, member_id, now_ts):
         state = self.state_for(member_id)
+        if self.is_paused(now_ts):
+            return False
         if state.last_round_processed == self.round_id:
             return False
         if now_ts < state.next_allowed_check_at:
@@ -71,6 +79,8 @@ class SmartScheduler:
     def next_wait_seconds(self, now_ts):
         if not self.member_states:
             return 0
+        if self.is_paused(now_ts):
+            return max(0, int(self.pause_until - now_ts))
         earliest = min(
             (state.next_allowed_check_at for state in self.member_states.values() if state.next_allowed_check_at),
             default=0,
@@ -103,11 +113,21 @@ class SmartScheduler:
             self.mode = "sleep"
         elif result_type == ResultType.RATE_LIMIT:
             state.cooldown_level = min(state.cooldown_level + 1, 6)
-            cooldown = random.uniform(45 * 60, 120 * 60) * (1 + state.cooldown_level * 0.15)
-            self.mode = "sleep"
+            cooldown = random.uniform(
+                self.settings["rate_limit_pause_min_sec"],
+                self.settings["rate_limit_pause_max_sec"],
+            ) * (1 + state.cooldown_level * 0.15)
+            self.mode = "PAUSED_RATE_LIMIT"
             self.rate_limiter.min_interval_seconds = min(
                 self.rate_limiter.min_interval_seconds + 3, 20
             )
+            window_sec = self.settings["rate_limit_window_sec"]
+            now_ts = time.time()
+            self.rate_limit_hits = [ts for ts in self.rate_limit_hits if now_ts - ts < window_sec]
+            self.rate_limit_hits.append(now_ts)
+            if len(self.rate_limit_hits) >= self.settings["rate_limit_threshold"]:
+                cooldown *= 1.5
+            self.pause_until = max(self.pause_until, now_ts + cooldown)
         elif result_type == ResultType.HAS_RDV:
             cooldown = self.settings["freeze_has_rdv_days"] * 24 * 60 * 60
             self.mode = "sleep"

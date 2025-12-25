@@ -94,6 +94,10 @@ SETTING_ROBOT_ENABLED = "robot_enabled"
 SETTING_ROBOT_BASE_INTERVAL = "robot_base_interval_sec"
 SETTING_ROBOT_BURST_MIN = "robot_burst_duration_min"
 SETTING_ROBOT_FREEZE_HAS_RDV_DAYS = "robot_freeze_has_rdv_days"
+SETTING_ROBOT_RATE_LIMIT_PAUSE_MIN = "robot_rate_limit_pause_min_sec"
+SETTING_ROBOT_RATE_LIMIT_PAUSE_MAX = "robot_rate_limit_pause_max_sec"
+SETTING_ROBOT_RATE_LIMIT_WINDOW = "robot_rate_limit_window_sec"
+SETTING_ROBOT_RATE_LIMIT_THRESHOLD = "robot_rate_limit_threshold"
 
 # --- Request pacing configuration (per endpoint) ---
 # هذه القيم تضيف حداً أدنى للفاصل الزمني بين الطلبات الحساسة لتجنب الحظر
@@ -120,6 +124,10 @@ DEFAULT_SETTINGS = {
     SETTING_ROBOT_BASE_INTERVAL: 8,
     SETTING_ROBOT_BURST_MIN: 25,
     SETTING_ROBOT_FREEZE_HAS_RDV_DAYS: 7,
+    SETTING_ROBOT_RATE_LIMIT_PAUSE_MIN: 45 * 60,
+    SETTING_ROBOT_RATE_LIMIT_PAUSE_MAX: 120 * 60,
+    SETTING_ROBOT_RATE_LIMIT_WINDOW: 15 * 60,
+    SETTING_ROBOT_RATE_LIMIT_THRESHOLD: 2,
 }
 
 # --- Retry Mechanism Constants (used by AnemAPIClient) ---

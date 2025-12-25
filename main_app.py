@@ -2602,7 +2602,14 @@ class AnemApp(QMainWindow):
     def update_robot_status_panel(self, mode, next_check_text, last_alert):
         if not self.robot_status_frame:
             return
-        mode_label = "burst" if mode == "burst" else "sleep"
+        if mode == "burst":
+            mode_label = "BURST"
+        elif mode == "PAUSED_RATE_LIMIT":
+            mode_label = "PAUSED_RATE_LIMIT"
+        elif mode == "paused":
+            mode_label = "PAUSED"
+        else:
+            mode_label = "SLEEP"
         self.robot_mode_label.setText(f"الوضع: {mode_label}")
         self.robot_next_label.setText(f"الفحص التالي: {next_check_text}")
         self.robot_alert_label.setText(f"آخر تنبيه: {last_alert}")

@@ -53,7 +53,7 @@ class RobotController:
         if result_type == ResultType.NO_DATES:
             return f"لا توجد مواعيد. تهدئة {minutes} د"
         if result_type == ResultType.RATE_LIMIT:
-            return f"ضغط مؤقت. تهدئة {minutes} د"
+            return "الخادم مشغول (طلبات كثيرة). تم إيقاف الروبوت مؤقتًا لحماية الحساب."
         if result_type == ResultType.NETWORK_ERROR:
             return f"شبكة غير مستقرة. تهدئة {minutes} د"
         if result_type == ResultType.HAS_DATES:
@@ -65,7 +65,7 @@ class RobotController:
         if result_type == ResultType.INVALID:
             return "غير مؤهل"
         if result_type == ResultType.PROTECTED_STEP:
-            return "الخطوة محمية وتتطلب تدخل"
+            return "الخطوة محمية وتتطلب تدخل يدوي"
         return "متابعة ذكية"
 
     def last_alert(self):

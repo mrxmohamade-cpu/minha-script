@@ -92,7 +92,6 @@ QLineEdit, QComboBox {
 }
 QLineEdit:focus, QComboBox:focus {
     border: 1px solid #9ab7ff;
-    box-shadow: 0 0 0 2px rgba(154, 183, 255, 0.18);
 }
 QComboBox QAbstractItemView {
     background: #0f1827;

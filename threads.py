@@ -288,6 +288,10 @@ class MonitoringThread(QThread):
             "base_global_interval_sec": max(6.0, float(self.settings.get("robot_base_interval_sec", 8))),
             "burst_duration_min": int(self.settings.get("robot_burst_duration_min", 25)),
             "freeze_has_rdv_days": int(self.settings.get("robot_freeze_has_rdv_days", 7)),
+            "rate_limit_pause_min_sec": int(self.settings.get("robot_rate_limit_pause_min_sec", 45 * 60)),
+            "rate_limit_pause_max_sec": int(self.settings.get("robot_rate_limit_pause_max_sec", 120 * 60)),
+            "rate_limit_window_sec": int(self.settings.get("robot_rate_limit_window_sec", 15 * 60)),
+            "rate_limit_threshold": int(self.settings.get("robot_rate_limit_threshold", 2)),
         }
         self.robot = RobotController(self.api_client, robot_settings)
         logger.info(f"MonitoringThread settings applied: Interval={self.interval_ms/60000:.1f}min, MemberDelay=[{self.min_member_delay}-{self.max_member_delay}]s")
@@ -322,8 +326,28 @@ class MonitoringThread(QThread):
         statuses_to_completely_skip_monitoring = ["مستفيد حاليًا من المنحة"]
         statuses_for_pdf_check_only = ["مكتمل", "لديه موعد مسبق"] 
         self._emit_robot_status()
+        mode_logged = False
         
         while self.is_running:
+            if not mode_logged:
+                mode_logged = True
+                if self.robot_enabled:
+                    logger.info("Robot mode ENABLED")
+                    self._emit_global_log("Robot mode ENABLED")
+                else:
+                    logger.info("Legacy mode ENABLED")
+                    self._emit_global_log("Legacy mode ENABLED")
+
+            if self.robot_enabled and self.robot.scheduler.is_paused():
+                pause_until = self.robot.scheduler.pause_until
+                pause_text = time.strftime("%H:%M:%S", time.localtime(pause_until))
+                logger.warning(f"Circuit breaker active until {pause_text}")
+                self._emit_global_log(f"Circuit breaker active until {pause_text}")
+                self._emit_robot_status()
+                self._wait_with_countdown(int(pause_until - time.time()), "استئناف الروبوت بعد: ")
+                if not self.is_running:
+                    break
+                continue
             if self.is_connection_lost_mode:
                 self._emit_global_log(f"الاتصال بالخادم مفقود. جاري فحص توفر الموقع...")
                 site_available, site_check_error = self.api_client.check_main_site_availability() 
@@ -483,12 +507,13 @@ class MonitoringThread(QThread):
                             self.is_connection_lost_mode = True
                             break 
 
-                        member_delay = random.uniform(self.min_member_delay, self.max_member_delay)
-                        logger.info(f"الفحص الأولي: تأخير {member_delay:.2f} ثانية قبل العضو التالي.")
-                        self._wait_with_countdown(int(member_delay)) 
-                        if not self.is_running: break
-                        if self.is_running:
-                            time.sleep(member_delay - int(member_delay))
+                        if not self.robot_enabled:
+                            member_delay = random.uniform(self.min_member_delay, self.max_member_delay)
+                            logger.info(f"الفحص الأولي: تأخير {member_delay:.2f} ثانية قبل العضو التالي.")
+                            self._wait_with_countdown(int(member_delay)) 
+                            if not self.is_running: break
+                            if self.is_running:
+                                time.sleep(member_delay - int(member_delay))
                     
                     if self.is_connection_lost_mode: 
                         continue 
@@ -649,12 +674,13 @@ class MonitoringThread(QThread):
                     self.is_connection_lost_mode = True
                     break 
 
-                member_delay = random.uniform(self.min_member_delay, self.max_member_delay)
-                logger.info(f"المراقبة الدورية: تأخير {member_delay:.2f} ثانية قبل العضو التالي.")
-                self._wait_with_countdown(int(member_delay)) 
-                if not self.is_running: break
-                if self.is_running: 
-                    time.sleep(member_delay - int(member_delay))
+                if not self.robot_enabled:
+                    member_delay = random.uniform(self.min_member_delay, self.max_member_delay)
+                    logger.info(f"المراقبة الدورية: تأخير {member_delay:.2f} ثانية قبل العضو التالي.")
+                    self._wait_with_countdown(int(member_delay)) 
+                    if not self.is_running: break
+                    if self.is_running: 
+                        time.sleep(member_delay - int(member_delay))
 
                 self.current_member_index_to_process = (main_list_idx + 1) % len(self.members_list_ref) if self.members_list_ref else 0
 

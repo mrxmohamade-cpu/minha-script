@@ -22,7 +22,7 @@ class ResultClassifier:
 
         if http_status in {401, 403} or "captcha" in error or "forbidden" in error:
             return ResultType.PROTECTED_STEP
-        if http_status == 429 or "429" in error or "طلبات كثيرة" in error:
+        if http_status == 429 or "rate_limit_429" in error or "429" in error or "طلبات كثيرة" in error:
             return ResultType.RATE_LIMIT
         if http_status and 500 <= http_status <= 599:
             return ResultType.SERVER_ERROR

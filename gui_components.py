@@ -1,7 +1,7 @@
 # gui_components.py (User App - Updated Dialogs V2 - Enhanced ActivationDialog UI - Revamped Toast - Message Dialog)
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QDialog, QFormLayout, QDialogButtonBox,
+    QPushButton, QDialog, QFormLayout, QDialogButtonBox, QCheckBox,
     QSpinBox, QStyle, QApplication, QDesktopWidget, QTextEdit,
     QScrollArea, QFrame,QSizePolicy, QGridLayout, QGraphicsDropShadowEffect, QGraphicsOpacityEffect,
     QListWidget, QListWidgetItem, QTextBrowser # تمت إضافة QListWidget و QTextBrowser
@@ -311,39 +311,53 @@ class SettingsDialog(QDialog):
         self.setMinimumWidth(400)
 
         from config import ( 
-            SETTING_MIN_MEMBER_DELAY, SETTING_MAX_MEMBER_DELAY,
-            SETTING_MONITORING_INTERVAL, SETTING_BACKOFF_429,
-            SETTING_BACKOFF_GENERAL, SETTING_REQUEST_TIMEOUT, DEFAULT_SETTINGS
+            SETTING_REQUEST_TIMEOUT, DEFAULT_SETTINGS,
+            SETTING_ROBOT_ENABLED, SETTING_ROBOT_BASE_INTERVAL,
+            SETTING_ROBOT_BURST_MIN, SETTING_ROBOT_FREEZE_HAS_RDV_DAYS,
+            SETTING_ROBOT_RATE_LIMIT_PAUSE_MIN, SETTING_ROBOT_RATE_LIMIT_PAUSE_MAX,
+            SETTING_ROBOT_RATE_LIMIT_WINDOW, SETTING_ROBOT_RATE_LIMIT_THRESHOLD
         )
 
         self.current_settings = current_settings
         layout = QFormLayout(self)
         layout.setLabelAlignment(Qt.AlignRight)
 
-        self.min_delay_spin = QSpinBox(self)
-        self.min_delay_spin.setRange(1, 300)
-        self.min_delay_spin.setValue(self.current_settings.get(SETTING_MIN_MEMBER_DELAY, DEFAULT_SETTINGS[SETTING_MIN_MEMBER_DELAY]))
-        self.min_delay_spin.setSuffix(" ثانية")
+        self.robot_enabled_check = QCheckBox("تفعيل روبوت المراقبة الذكي", self)
+        self.robot_enabled_check.setChecked(self.current_settings.get(SETTING_ROBOT_ENABLED, True))
 
-        self.max_delay_spin = QSpinBox(self)
-        self.max_delay_spin.setRange(1, 600)
-        self.max_delay_spin.setValue(self.current_settings.get(SETTING_MAX_MEMBER_DELAY, DEFAULT_SETTINGS[SETTING_MAX_MEMBER_DELAY]))
-        self.max_delay_spin.setSuffix(" ثانية")
+        self.robot_base_interval_spin = QSpinBox(self)
+        self.robot_base_interval_spin.setRange(6, 30)
+        self.robot_base_interval_spin.setValue(self.current_settings.get(SETTING_ROBOT_BASE_INTERVAL, DEFAULT_SETTINGS[SETTING_ROBOT_BASE_INTERVAL]))
+        self.robot_base_interval_spin.setSuffix(" ثانية")
 
-        self.monitoring_interval_spin = QSpinBox(self)
-        self.monitoring_interval_spin.setRange(1, 120)
-        self.monitoring_interval_spin.setValue(self.current_settings.get(SETTING_MONITORING_INTERVAL, DEFAULT_SETTINGS[SETTING_MONITORING_INTERVAL]))
-        self.monitoring_interval_spin.setSuffix(" دقيقة")
+        self.robot_burst_spin = QSpinBox(self)
+        self.robot_burst_spin.setRange(10, 60)
+        self.robot_burst_spin.setValue(self.current_settings.get(SETTING_ROBOT_BURST_MIN, DEFAULT_SETTINGS[SETTING_ROBOT_BURST_MIN]))
+        self.robot_burst_spin.setSuffix(" دقيقة")
 
-        self.backoff_429_spin = QSpinBox(self)
-        self.backoff_429_spin.setRange(10, 3600)
-        self.backoff_429_spin.setValue(self.current_settings.get(SETTING_BACKOFF_429, DEFAULT_SETTINGS[SETTING_BACKOFF_429]))
-        self.backoff_429_spin.setSuffix(" ثانية")
+        self.robot_freeze_rdv_spin = QSpinBox(self)
+        self.robot_freeze_rdv_spin.setRange(1, 30)
+        self.robot_freeze_rdv_spin.setValue(self.current_settings.get(SETTING_ROBOT_FREEZE_HAS_RDV_DAYS, DEFAULT_SETTINGS[SETTING_ROBOT_FREEZE_HAS_RDV_DAYS]))
+        self.robot_freeze_rdv_spin.setSuffix(" يوم")
 
-        self.backoff_general_spin = QSpinBox(self)
-        self.backoff_general_spin.setRange(1, 300)
-        self.backoff_general_spin.setValue(self.current_settings.get(SETTING_BACKOFF_GENERAL, DEFAULT_SETTINGS[SETTING_BACKOFF_GENERAL]))
-        self.backoff_general_spin.setSuffix(" ثانية")
+        self.robot_pause_min_spin = QSpinBox(self)
+        self.robot_pause_min_spin.setRange(10, 300)
+        self.robot_pause_min_spin.setValue(int(self.current_settings.get(SETTING_ROBOT_RATE_LIMIT_PAUSE_MIN, DEFAULT_SETTINGS[SETTING_ROBOT_RATE_LIMIT_PAUSE_MIN]) / 60))
+        self.robot_pause_min_spin.setSuffix(" دقيقة")
+
+        self.robot_pause_max_spin = QSpinBox(self)
+        self.robot_pause_max_spin.setRange(30, 360)
+        self.robot_pause_max_spin.setValue(int(self.current_settings.get(SETTING_ROBOT_RATE_LIMIT_PAUSE_MAX, DEFAULT_SETTINGS[SETTING_ROBOT_RATE_LIMIT_PAUSE_MAX]) / 60))
+        self.robot_pause_max_spin.setSuffix(" دقيقة")
+
+        self.robot_rate_limit_threshold_spin = QSpinBox(self)
+        self.robot_rate_limit_threshold_spin.setRange(1, 5)
+        self.robot_rate_limit_threshold_spin.setValue(self.current_settings.get(SETTING_ROBOT_RATE_LIMIT_THRESHOLD, DEFAULT_SETTINGS[SETTING_ROBOT_RATE_LIMIT_THRESHOLD]))
+
+        self.robot_rate_limit_window_spin = QSpinBox(self)
+        self.robot_rate_limit_window_spin.setRange(5, 60)
+        self.robot_rate_limit_window_spin.setValue(int(self.current_settings.get(SETTING_ROBOT_RATE_LIMIT_WINDOW, DEFAULT_SETTINGS[SETTING_ROBOT_RATE_LIMIT_WINDOW]) / 60))
+        self.robot_rate_limit_window_spin.setSuffix(" دقيقة")
         
         self.request_timeout_spin = QSpinBox(self)
         self.request_timeout_spin.setRange(5, 120)
@@ -351,11 +365,14 @@ class SettingsDialog(QDialog):
         self.request_timeout_spin.setSuffix(" ثانية")
 
 
-        layout.addRow("أقل تأخير بين الأعضاء:", self.min_delay_spin)
-        layout.addRow("أقصى تأخير بين الأعضاء:", self.max_delay_spin)
-        layout.addRow("الفاصل الزمني لدورة المراقبة:", self.monitoring_interval_spin)
-        layout.addRow("تأخير أولي لخطأ 429 (طلبات كثيرة):", self.backoff_429_spin)
-        layout.addRow("تأخير أولي للأخطاء العامة:", self.backoff_general_spin)
+        layout.addRow(self.robot_enabled_check)
+        layout.addRow("الفاصل العالمي بين الطلبات:", self.robot_base_interval_spin)
+        layout.addRow("مدة وضع الطوارئ (Burst):", self.robot_burst_spin)
+        layout.addRow("تجميد من لديه موعد:", self.robot_freeze_rdv_spin)
+        layout.addRow("إيقاف مؤقت بعد 429 (حد أدنى):", self.robot_pause_min_spin)
+        layout.addRow("إيقاف مؤقت بعد 429 (حد أقصى):", self.robot_pause_max_spin)
+        layout.addRow("حد تكرار 429 قبل تشديد الإيقاف:", self.robot_rate_limit_threshold_spin)
+        layout.addRow("نافذة احتساب 429:", self.robot_rate_limit_window_spin)
         layout.addRow("مهلة الطلب للواجهة البرمجية (API):", self.request_timeout_spin)
 
 
@@ -368,22 +385,22 @@ class SettingsDialog(QDialog):
 
     def get_settings(self):
         from config import ( 
-            SETTING_MIN_MEMBER_DELAY, SETTING_MAX_MEMBER_DELAY,
-            SETTING_MONITORING_INTERVAL, SETTING_BACKOFF_429,
-            SETTING_BACKOFF_GENERAL, SETTING_REQUEST_TIMEOUT
+            SETTING_REQUEST_TIMEOUT,
+            SETTING_ROBOT_ENABLED, SETTING_ROBOT_BASE_INTERVAL,
+            SETTING_ROBOT_BURST_MIN, SETTING_ROBOT_FREEZE_HAS_RDV_DAYS,
+            SETTING_ROBOT_RATE_LIMIT_PAUSE_MIN, SETTING_ROBOT_RATE_LIMIT_PAUSE_MAX,
+            SETTING_ROBOT_RATE_LIMIT_WINDOW, SETTING_ROBOT_RATE_LIMIT_THRESHOLD
         )
-        min_val = self.min_delay_spin.value()
-        max_val = self.max_delay_spin.value()
-        if min_val > max_val:
-            min_val = max_val
-            self.min_delay_spin.setValue(min_val)
 
         return {
-            SETTING_MIN_MEMBER_DELAY: min_val,
-            SETTING_MAX_MEMBER_DELAY: max_val,
-            SETTING_MONITORING_INTERVAL: self.monitoring_interval_spin.value(),
-            SETTING_BACKOFF_429: self.backoff_429_spin.value(),
-            SETTING_BACKOFF_GENERAL: self.backoff_general_spin.value(),
+            SETTING_ROBOT_ENABLED: self.robot_enabled_check.isChecked(),
+            SETTING_ROBOT_BASE_INTERVAL: self.robot_base_interval_spin.value(),
+            SETTING_ROBOT_BURST_MIN: self.robot_burst_spin.value(),
+            SETTING_ROBOT_FREEZE_HAS_RDV_DAYS: self.robot_freeze_rdv_spin.value(),
+            SETTING_ROBOT_RATE_LIMIT_PAUSE_MIN: self.robot_pause_min_spin.value() * 60,
+            SETTING_ROBOT_RATE_LIMIT_PAUSE_MAX: self.robot_pause_max_spin.value() * 60,
+            SETTING_ROBOT_RATE_LIMIT_WINDOW: self.robot_rate_limit_window_spin.value() * 60,
+            SETTING_ROBOT_RATE_LIMIT_THRESHOLD: self.robot_rate_limit_threshold_spin.value(),
             SETTING_REQUEST_TIMEOUT: self.request_timeout_spin.value()
         }
 
