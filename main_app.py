@@ -135,6 +135,9 @@ class AnemApp(QMainWindow):
         self.toast_notifications = []
         self.settings = {}
         self.activation_thread = None
+        self.subscription_badge = None
+        self.subscription_manage_button = None
+        self.refresh_activation_button = None
 
         # متغيرات خاصة بالرسائل والإشعارات
         self.app_messages = [] 
