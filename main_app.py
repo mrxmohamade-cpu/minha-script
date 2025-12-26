@@ -22,7 +22,7 @@ from PyQt5.QtGui import QIcon, QColor, QPalette, QDesktopServices, QFontDatabase
 
 from firebase_service import FirebaseService
 from gui_components import (
-    ToastNotification, AddMemberDialog, EditMemberDialog,
+    NotificationManager, AddMemberDialog, EditMemberDialog,
     SettingsDialog, ViewMemberDialog, ActivationDialog, SubscriptionDetailsDialog,
     MessagesDialog # تمت إضافة MessagesDialog
 )
@@ -75,6 +75,22 @@ def load_custom_fonts():
     if loaded_fonts_count > 0: logger.info(f"تم تحميل {loaded_fonts_count} خطوط مخصصة بنجاح.")
     else: logger.warning("لم يتم تحميل أي خطوط مخصصة.")
 
+    # اختر خطًا عربيًا واضحًا مع تفضيل التنعيم لتحسين القراءة.
+    available_families = QFontDatabase().families()
+    preferred_fonts = [
+        "Cairo", "Tajawal", "Noto Kufi Arabic", "Noto Sans Arabic", "Segoe UI", "Arial"
+    ]
+    chosen_font_family = QApplication.font().family()
+    for family in preferred_fonts:
+        if family in available_families:
+            chosen_font_family = family
+            break
+
+    app_font = QFont(chosen_font_family, 10)
+    app_font.setStyleStrategy(QFont.PreferAntialias)
+    app_font.setHintingPreference(QFont.PreferFullHinting)
+    QApplication.setFont(app_font)
+
 class ActivationProcessingThread(QThread):
     activation_finished = pyqtSignal(bool, str, object)
 
@@ -114,11 +130,14 @@ class AnemApp(QMainWindow):
         self.firebase_service = FirebaseService() 
         self.activated_code_id = None
         self.current_subscription_data = None
-        self.current_device_id = self.firebase_service.current_device_id_for_messaging 
+        self.current_device_id = self.firebase_service.current_device_id_for_messaging
         self.activation_dialog_open = False
         self.toast_notifications = []
         self.settings = {}
         self.activation_thread = None
+        self.subscription_badge = None
+        self.subscription_manage_button = None
+        self.refresh_activation_button = None
 
         # متغيرات خاصة بالرسائل والإشعارات
         self.app_messages = [] 
@@ -132,7 +151,7 @@ class AnemApp(QMainWindow):
         if not self.activation_successful:
             logger.critical("AnemApp __init__: فشل تفعيل البرنامج. لن يتم إكمال تهيئة واجهة المستخدم.")
             return
-        self._should_initialize_ui = True 
+        self._should_initialize_ui = True
 
         load_custom_fonts()
         QApplication.setLayoutDirection(Qt.RightToLeft)
@@ -150,6 +169,19 @@ class AnemApp(QMainWindow):
         self.members_list = []
         self.filtered_members_list = []
         self.is_filter_active = False
+        self.last_added_member_index = None
+        self.member_overview_selected_index = None
+        self.member_overview_frame = None
+        self.member_overview_title = None
+        self.member_overview_state = None
+        self.member_overview_next = None
+        self.member_overview_wait = None
+        self.member_overview_last = None
+        self.member_overview_hint = None
+        self.robot_status_frame = None
+        self.robot_mode_label = None
+        self.robot_next_label = None
+        self.robot_alert_label = None
 
         self.api_client = AnemAPIClient(
             initial_backoff_general=self.settings.get(SETTING_BACKOFF_GENERAL, DEFAULT_SETTINGS[SETTING_BACKOFF_GENERAL]),
@@ -163,6 +195,15 @@ class AnemApp(QMainWindow):
         self.active_spinner_row_in_view = -1
         self.spinner_char_idx = 0
         self.spinner_chars = ['◐', '◓', '◑', '◒']
+        self.latest_countdown_text = "لا يوجد انتظار حالي"
+        self.activity_feed = []  # يحتفظ بآخر الرسائل لعرضها للمستخدم
+
+        # عناصر شريط الحالة المحسّنة
+        self.status_spinner_idx = 0
+        self.status_spinner_chars = ['⏳', '⌛', '⏰', '🕒']
+        self.status_spinner_timer = QTimer(self)
+        self.status_spinner_timer.setInterval(350)
+        self.status_spinner_timer.timeout.connect(self._advance_status_spinner)
         self.row_spinner_timer = QTimer(self)
         self.row_spinner_timer.timeout.connect(self.update_active_row_spinner_display)
         self.row_spinner_timer_interval = 150
@@ -173,18 +214,22 @@ class AnemApp(QMainWindow):
         self.monitoring_thread.global_log_signal.connect(self.update_status_bar_message)
         self.monitoring_thread.member_being_processed_signal.connect(self.handle_member_processing_signal)
         self.monitoring_thread.countdown_update_signal.connect(self.update_countdown_timer_display)
+        self.monitoring_thread.robot_status_signal.connect(self.update_robot_status_panel)
+        self.monitoring_thread.robot_alert_signal.connect(self._handle_robot_alert)
 
         self.subscription_updated_signal.connect(self._handle_subscription_update_from_signal)
         self.new_app_messages_signal.connect(self._handle_incoming_app_messages_on_main_thread) # ربط الإشارة الجديدة
 
 
-        self.init_ui() 
-        self.load_stylesheet() 
-        self.load_members_data() 
+        self.init_ui()
+        self.load_stylesheet()
+        self.load_members_data()
         QTimer.singleShot(0, self.apply_app_settings)
         
         if self.activation_successful:
             self._start_message_listener() # بدء مستمع الرسائل
+
+        self._refresh_subscription_badge()
 
         logger.info("AnemApp __init__: اكتملت التهيئة.")
 
@@ -202,6 +247,18 @@ class AnemApp(QMainWindow):
         self.activation_successful = self._perform_activation_check_logic()
         if not self.activation_successful:
             logger.info("AnemApp: _initialize_and_check_activation determined activation failed.")
+
+    def _recheck_activation_state(self):
+        """إعادة التحقق يدويًا من حالة الاشتراك وإظهار نتيجة واضحة للمستخدم."""
+        self.update_status_bar_message("إعادة التحقق من الاشتراك...", is_general_message=True)
+        success = self._perform_activation_check_logic()
+        self.activation_successful = success
+        self._refresh_subscription_badge()
+        if success:
+            self._show_toast("تمت إعادة التحقق بنجاح.", type="success", title="الاشتراك")
+            self.update_status_bar_message("الاشتراك نشط وتمت المزامنة.", is_general_message=True)
+        else:
+            self._show_toast("فشلت إعادة التحقق. يرجى التحقق من الاتصال أو إعادة إدخال الكود.", type="error", title="الاشتراك")
 
     def _perform_activation_check_logic(self):
         logger.info("AnemApp: بدء التحقق من تفعيل البرنامج...")
@@ -269,9 +326,10 @@ class AnemApp(QMainWindow):
             dialog_instance.show_status_message(message_from_service or "تم تفعيل البرنامج بنجاح!", is_success=True)
             QMessageBox.information(dialog_instance, "نجاح التفعيل", message_from_service or "تم تفعيل البرنامج بنجاح!")
 
+            self._refresh_subscription_badge()
             self.firebase_service.listen_to_activation_code_changes(self.activated_code_id, self._pass_subscription_update_to_signal)
-            dialog_instance.accept() 
-            return True 
+            dialog_instance.accept()
+            return True
         else:
             if server_code_data: self.current_subscription_data = server_code_data
             user_friendly_error = "فشل تفعيل الكود. يرجى المحاولة مرة أخرى."
@@ -494,17 +552,40 @@ class AnemApp(QMainWindow):
 
         if critical_error_occurred:
             final_critical_msg = critical_message if critical_message else "حدث خطأ في حالة الاشتراك يمنع استخدام البرنامج."
-            self._show_critical_subscription_error(final_critical_msg) 
-            self._clear_local_activation_and_state(f"Critical subscription issue: {final_critical_msg}") 
-            if not self.activation_dialog_open: 
+            self._show_critical_subscription_error(final_critical_msg)
+            self._clear_local_activation_and_state(f"Critical subscription issue: {final_critical_msg}")
+            if not self.activation_dialog_open:
                 logger.info("AnemApp: Attempting to re-show activation dialog due to critical subscription error.")
-                QTimer.singleShot(100, lambda: self._initialize_and_check_activation()) 
+                QTimer.singleShot(100, lambda: self._initialize_and_check_activation())
+
+        self._refresh_subscription_badge()
 
     def _show_critical_subscription_error(self, message):
         logger.critical(f"AnemApp: Critical subscription error: {message}")
-        if not self.activation_dialog_open: 
+        if not self.activation_dialog_open:
             QMessageBox.critical(self, "خطأ في الاشتراك", message + "\nسيتم تعطيل وظائف البرنامج.", QMessageBox.Ok)
-        self._disable_app_functions() 
+        self._disable_app_functions()
+
+    def _refresh_subscription_badge(self):
+        if not self.subscription_badge:
+            return
+        status = (self.current_subscription_data or {}).get("status", "UNKNOWN").upper()
+        label = self.current_subscription_data.get("activation_code") if self.current_subscription_data else None
+        status_map = {
+            "ACTIVE": ("الاشتراك: مفعل", "#1dd1a1"),
+            "PENDING": ("الاشتراك: قيد التفعيل", "#f2c94c"),
+            "EXPIRED": ("الاشتراك: منتهي", "#ff6b6b"),
+            "REVOKED": ("الاشتراك: ملغي", "#ff6b6b"),
+            "DEVICE_REMOVED": ("الجهاز غير مصرح", "#f28482"),
+        }
+        text, color = status_map.get(status, ("الاشتراك: غير معروف", "#74c0fc"))
+        if label:
+            text = f"{text} ({label})"
+        self.subscription_badge.setText(text)
+        self.subscription_badge.setStyleSheet(
+            f"QLabel#SubscriptionBadge {{ background: {color}22; color: {color}; padding: 6px 10px;"
+            f" border: 1px solid {color}; border-radius: 10px; font-weight: 700; }}"
+        )
 
     def _disable_app_functions(self):
         logger.info("AnemApp: Disabling application functions.")
@@ -512,8 +593,10 @@ class AnemApp(QMainWindow):
         self.stop_button.setEnabled(False)
         self.add_member_button.setEnabled(False)
         self.remove_member_button.setEnabled(False)
+        if hasattr(self, 'check_now_button'):
+            self.check_now_button.setEnabled(False)
         if hasattr(self, 'settings_action'): self.settings_action.setEnabled(False)
-        if self.monitoring_thread.isRunning(): 
+        if self.monitoring_thread.isRunning():
             self.stop_monitoring()
 
     def _enable_app_functions(self):
@@ -521,6 +604,8 @@ class AnemApp(QMainWindow):
         self.start_button.setEnabled(True)
         self.add_member_button.setEnabled(True)
         self.remove_member_button.setEnabled(True)
+        if hasattr(self, 'check_now_button'):
+            self.check_now_button.setEnabled(True)
         if hasattr(self, 'settings_action'): self.settings_action.setEnabled(True)
 
     def _start_message_listener(self):
@@ -606,24 +691,24 @@ class AnemApp(QMainWindow):
 
     def _update_messages_action_ui(self):
         """تحديث عنصر القائمة الخاص بالرسائل (النقطة 2 - جزء من Badge)."""
-        if hasattr(self, 'messages_action_menu'): 
-            base_text = "الرسائل والتحديثات"
-            # استخدام أيقونة مميزة إذا كانت هناك رسائل غير مقروءة
-            icon_theme_name = "mail-unread-new" if self.unread_message_count > 0 else "mail-read" 
-            
-            action_icon = QIcon.fromTheme(icon_theme_name, self.style().standardIcon(QStyle.SP_MessageBoxInformation)) 
-            self.messages_action_menu.setIcon(action_icon)
+        if not self.messages_action_menu:
+            return
+        base_text = "الرسائل والتحديثات"
+        icon_theme_name = "mail-unread-new" if self.unread_message_count > 0 else "mail-read"
 
-            if self.unread_message_count > 0:
-                self.messages_action_menu.setText(f"{base_text} ({self.unread_message_count})")
-                font = self.messages_action_menu.font()
-                font.setBold(True) # تمييز النص إذا كانت هناك رسائل غير مقروءة
-                self.messages_action_menu.setFont(font)
-            else:
-                self.messages_action_menu.setText(base_text)
-                font = self.messages_action_menu.font()
-                font.setBold(False)
-                self.messages_action_menu.setFont(font)
+        action_icon = QIcon.fromTheme(icon_theme_name, self.style().standardIcon(QStyle.SP_MessageBoxInformation))
+        self.messages_action_menu.setIcon(action_icon)
+
+        if self.unread_message_count > 0:
+            self.messages_action_menu.setText(f"{base_text} ({self.unread_message_count})")
+            font = self.messages_action_menu.font()
+            font.setBold(True)
+            self.messages_action_menu.setFont(font)
+        else:
+            self.messages_action_menu.setText(base_text)
+            font = self.messages_action_menu.font()
+            font.setBold(False)
+            self.messages_action_menu.setFont(font)
 
     def _update_messages_button_status_bar(self):
         """تحديث زر الرسائل في شريط الحالة (النقطة 2 - Badge)."""
@@ -678,11 +763,43 @@ class AnemApp(QMainWindow):
             self._update_messages_button_status_bar()
 
 
+
     def init_ui(self):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
-        main_layout.setSpacing(10)
+        main_layout.setContentsMargins(12, 12, 12, 12)
+        main_layout.setSpacing(12)
+
+        # عناصر الواجهة (تصريحات أولية)
+        self.search_filter_frame = None
+        self.search_input = None
+        self.filter_by_combo = None
+        self.filter_value_combo = None
+        self.clear_filter_button = None
+
+        self.subscription_badge = None
+        self.subscription_manage_button = None
+        self.refresh_activation_button = None
+
+        self.operation_panel_frame = None
+        self.operation_current_label = None
+        self.operation_next_label = None
+        self.operation_timer_label = None
+
+        self.insight_frame = None
+        self.stat_total_card = None
+        self.stat_ready_card = None
+        self.stat_monitor_card = None
+        self.activity_list = None
+
+        self.member_overview_frame = None
+        self.member_overview_title = None
+        self.member_overview_state = None
+        self.member_overview_next = None
+        self.member_overview_wait = None
+        self.member_overview_last = None
+        self.member_overview_hint = None
 
         menubar = self.menuBar()
         file_menu = menubar.addMenu("ملف")
@@ -690,118 +807,157 @@ class AnemApp(QMainWindow):
         self.settings_action.triggered.connect(self.open_settings_dialog)
         file_menu.addAction(self.settings_action)
 
-        tools_menu = menubar.addMenu("أدوات")
-        self.toggle_search_filter_action = QAction("إظهار/إخفاء البحث والفلترة", self)
-        self.toggle_search_filter_action.setCheckable(True)
-        self.toggle_search_filter_action.setChecked(True)
-        self.toggle_search_filter_action.triggered.connect(self.toggle_search_filter_bar)
-        tools_menu.addAction(self.toggle_search_filter_action)
-
-        self.toggle_details_action = QAction("إظهار التفاصيل", self)
-        self.toggle_details_action.setCheckable(True)
-        self.toggle_details_action.setChecked(False)
-        self.toggle_details_action.triggered.connect(self.toggle_column_visibility)
-        tools_menu.addAction(self.toggle_details_action)
-
-        self.view_subscription_action = QAction(QIcon.fromTheme("security-high", self.style().standardIcon(QStyle.SP_MessageBoxInformation)), "عرض تفاصيل الاشتراك", self)
-        self.view_subscription_action.triggered.connect(self._show_subscription_details_dialog)
-        tools_menu.addAction(self.view_subscription_action)
-        
-        # إضافة عنصر قائمة الرسائل
-        self.messages_action_menu = QAction("الرسائل والتحديثات", self) 
-        self.messages_action_menu.triggered.connect(self._show_messages_dialog)
-        tools_menu.addAction(self.messages_action_menu)
-        self._update_messages_action_ui() # تحديث الواجهة الأولية
-
+        # واجهة مبسطة بدون قوائم أدوات إضافية
+        self.toggle_search_filter_action = None
+        self.toggle_details_action = None
+        self.messages_action_menu = None
 
         file_menu.addSeparator()
         exit_action = QAction(QIcon.fromTheme("application-exit"), "خروج", self)
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
 
-        header_frame = QFrame(self)
+        # رأس منظم مع شارة اشتراك وإجراءات واضحة
+        header_frame = QFrame()
         header_frame.setObjectName("HeaderFrame")
         header_layout = QHBoxLayout(header_frame)
-        app_title_label = QLabel("برنامج إدارة مواعيد منحة البطالة", self)
-        header_layout.addWidget(app_title_label, alignment=Qt.AlignLeft | Qt.AlignVCenter)
-        header_layout.addStretch()
-        self.datetime_label = QLabel(self)
-        self.datetime_label.setObjectName("datetime_label")
-        header_layout.addWidget(self.datetime_label, alignment=Qt.AlignRight | Qt.AlignVCenter)
-        self.update_datetime() 
-        self.datetime_timer = QTimer(self)
-        self.datetime_timer.timeout.connect(self.update_datetime)
-        self.datetime_timer.start(1000) 
+        header_layout.setContentsMargins(14, 12, 14, 10)
+        header_layout.setSpacing(16)
+
+        title_column = QVBoxLayout()
+        title_column.setSpacing(2)
+        title_label = QLabel("إدارة مواعيد منحة البطالة")
+        title_label.setObjectName("HeaderTitle")
+        subtitle_label = QLabel("متابعة الأعضاء والحجوزات برسائل واضحة")
+        subtitle_label.setObjectName("HeaderSubtitle")
+        title_column.addWidget(title_label)
+        title_column.addWidget(subtitle_label)
+        header_layout.addLayout(title_column, 2)
+
+        badge_container = QHBoxLayout()
+        badge_container.setSpacing(8)
+
+        self.subscription_badge = QLabel("الاشتراك: غير معروف")
+        self.subscription_badge.setObjectName("SubscriptionBadge")
+        badge_container.addWidget(self.subscription_badge)
+
+        self.subscription_manage_button = QPushButton("إدارة الاشتراك")
+        self.subscription_manage_button.setObjectName("SubscriptionManageButton")
+        self.subscription_manage_button.setIcon(self.style().standardIcon(QStyle.SP_ComputerIcon))
+        self.subscription_manage_button.clicked.connect(self._show_subscription_details_dialog)
+        badge_container.addWidget(self.subscription_manage_button)
+
+        self.refresh_activation_button = QPushButton("إعادة التحقق")
+        self.refresh_activation_button.setObjectName("SubscriptionRefreshButton")
+        self.refresh_activation_button.setIcon(self.style().standardIcon(QStyle.SP_BrowserReload))
+        self.refresh_activation_button.clicked.connect(self._recheck_activation_state)
+        badge_container.addWidget(self.refresh_activation_button)
+
+        header_layout.addLayout(badge_container, 1)
         main_layout.addWidget(header_frame)
 
-        self.search_filter_frame = QFrame(self)
-        self.search_filter_frame.setObjectName("SearchFilterFrame")
-        search_filter_layout = QHBoxLayout(self.search_filter_frame)
-        search_filter_layout.setSpacing(10)
+        # شريط أدوات البحث والفلترة
+        self.search_filter_frame = QFrame()
+        self.search_filter_frame.setObjectName("FilterBar")
+        filter_layout = QHBoxLayout(self.search_filter_frame)
+        filter_layout.setContentsMargins(10, 6, 10, 6)
+        filter_layout.setSpacing(10)
 
-        self.search_input = QLineEdit(self)
-        self.search_input.setPlaceholderText("بحث بالاسم, NIN, الوسيط...")
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("بحث بالاسم، الهاتف، أو الرقم...")
         self.search_input.textChanged.connect(self.apply_filter_and_search)
-        search_filter_layout.addWidget(self.search_input, 2)
+        self.search_input.setClearButtonEnabled(True)
+        filter_layout.addWidget(self.search_input, 2)
 
-        self.filter_by_combo = QComboBox(self)
-        self.filter_by_combo.addItem("فلترة حسب...", None)
+        self.filter_by_combo = QComboBox()
+        self.filter_by_combo.setObjectName("FilterCombo")
+        self.filter_by_combo.addItem("تصفية حسب...", None)
         self.filter_by_combo.addItem("الحالة", "status")
-        self.filter_by_combo.addItem("لديه موعد", "has_rdv")
-        self.filter_by_combo.addItem("مستفيد حاليًا", "have_allocation")
-        self.filter_by_combo.addItem("تم تحميل PDF التعهد", "pdf_honneur")
-        self.filter_by_combo.addItem("تم تحميل PDF الموعد", "pdf_rdv")
+        self.filter_by_combo.addItem("حجز موعد", "has_rdv")
+        self.filter_by_combo.addItem("مستفيد", "have_allocation")
+        self.filter_by_combo.addItem("PDF التزام", "pdf_honneur")
+        self.filter_by_combo.addItem("PDF موعد", "pdf_rdv")
         self.filter_by_combo.currentIndexChanged.connect(self.on_filter_by_changed)
-        search_filter_layout.addWidget(self.filter_by_combo, 1)
+        filter_layout.addWidget(self.filter_by_combo)
 
-        self.filter_value_combo = QComboBox(self)
+        self.filter_value_combo = QComboBox()
+        self.filter_value_combo.setObjectName("FilterValueCombo")
         self.filter_value_combo.setVisible(False)
         self.filter_value_combo.currentIndexChanged.connect(self.apply_filter_and_search)
-        search_filter_layout.addWidget(self.filter_value_combo, 1)
+        filter_layout.addWidget(self.filter_value_combo)
 
-        self.clear_filter_button = QPushButton("مسح الفلتر", self)
+        self.clear_filter_button = QPushButton("مسح")
+        self.clear_filter_button.setObjectName("ClearFilterButton")
         self.clear_filter_button.setIcon(self.style().standardIcon(QStyle.SP_DialogResetButton))
         self.clear_filter_button.clicked.connect(self.clear_filter_and_search)
-        search_filter_layout.addWidget(self.clear_filter_button)
+        filter_layout.addWidget(self.clear_filter_button)
 
         main_layout.addWidget(self.search_filter_frame)
 
+        self.robot_status_frame = QFrame()
+        self.robot_status_frame.setObjectName("RobotStatusFrame")
+        robot_layout = QHBoxLayout(self.robot_status_frame)
+        robot_layout.setContentsMargins(12, 6, 12, 6)
+        robot_layout.setSpacing(14)
 
-        main_controls_frame = QFrame(self)
-        main_controls_layout = QHBoxLayout(main_controls_frame)
-        section_title_label = QLabel("إدارة المستفيدين", self)
-        section_title_label.setObjectName("section_title_label")
-        main_controls_layout.addWidget(section_title_label, alignment=Qt.AlignLeft | Qt.AlignVCenter)
-        main_controls_layout.addStretch()
-        main_layout.addWidget(main_controls_frame)
+        robot_title = QLabel("حالة الروبوت")
+        robot_title.setObjectName("RobotStatusTitle")
+        robot_layout.addWidget(robot_title)
 
+        self.robot_mode_label = QLabel("الوضع: sleep")
+        self.robot_mode_label.setObjectName("RobotStatusValue")
+        robot_layout.addWidget(self.robot_mode_label)
 
+        self.robot_next_label = QLabel("الفحص التالي: -")
+        self.robot_next_label.setObjectName("RobotStatusValue")
+        robot_layout.addWidget(self.robot_next_label)
+
+        self.robot_alert_label = QLabel("آخر تنبيه: لا يوجد")
+        self.robot_alert_label.setObjectName("RobotStatusValue")
+        robot_layout.addWidget(self.robot_alert_label, 1)
+
+        main_layout.addWidget(self.robot_status_frame)
+
+        # التركيز على الجدول فقط مع تخفيف العناصر الثانوية
+        self.insight_frame = None
+        self.stat_total_card = None
+        self.stat_ready_card = None
+        self.stat_monitor_card = None
+        self.operation_panel_frame = None
+        self.operation_current_label = None
+        self.operation_next_label = None
+        self.operation_timer_label = None
+
+        # شريط الحالة المبسط أسفل النافذة (المصدر الوحيد للحالة)
         self.statusBar = QStatusBar()
+        self.statusBar.setObjectName("MainStatusBar")
         self.setStatusBar(self.statusBar)
-        self.status_bar_label = QLabel("جاهز.")
-        self.last_scan_label = QLabel("")
-        self.countdown_label = QLabel("")
-        
-        # إنشاء زر الرسائل في شريط الحالة
-        self.messages_button_status_bar = QToolButton(self)
-        self.messages_button_status_bar.setAutoRaise(True) 
-        self.messages_button_status_bar.setToolButtonStyle(Qt.ToolButtonTextBesideIcon) # لعرض النص بجانب الأيقونة
-        self.messages_button_status_bar.clicked.connect(self._show_messages_dialog)
-        self.messages_button_status_bar.setObjectName("StatusBarMessagesButton")
-        self.messages_button_status_bar.setFocusPolicy(Qt.NoFocus) 
-        
-        self.statusBar.addPermanentWidget(self.messages_button_status_bar) 
-        self.statusBar.addPermanentWidget(self.countdown_label)
-        self.statusBar.addPermanentWidget(self.last_scan_label)
-        self.statusBar.addWidget(self.status_bar_label, 1) 
-        self._update_messages_button_status_bar() # تحديث الواجهة الأولية للزر
 
+        self.status_bar_label = QLabel("التطبيق جاهز.")
+        self.status_bar_label.setObjectName("StatusDetail")
+        self.countdown_label = QLabel("لا يوجد انتظار")
+        self.countdown_label.setObjectName("CountdownLabel")
+        self.current_member_label = QLabel("لا يوجد عضو قيد المعالجة")
+        self.current_member_label.setObjectName("CurrentMemberLabel")
 
+        status_layout = QHBoxLayout()
+        status_layout.setContentsMargins(10, 2, 10, 2)
+        status_layout.setSpacing(16)
+        status_container = QWidget()
+        status_container.setLayout(status_layout)
+
+        status_layout.addWidget(self.status_bar_label, 3)
+        status_layout.addWidget(self.countdown_label, 1)
+        status_layout.addWidget(self.current_member_label, 2)
+
+        self.statusBar.addPermanentWidget(status_container, 1)
+
+        # المنطقة الرئيسية: الجدول مع لوحة العضو والنشاط
         self.table = QTableWidget(self)
         self.table.setColumnCount(self.COL_DETAILS + 1)
         self.table.setHorizontalHeaderLabels([
-            "أيقونة", "الاسم الكامل", "رقم التعريف", "رقم الوسيط",
-            "الحساب البريدي", "رقم الهاتف", "الحالة", "تاريخ الموعد", "آخر تحديث/خطأ"
+            "أيقونة", "الاسم", "رقم التعريف", "رقم الوسيط",
+            "الحساب البريدي", "رقم الهاتف", "الحالة", "تاريخ الموعد", "آخر تحديث"
         ])
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.Interactive)
@@ -810,41 +966,53 @@ class AnemApp(QMainWindow):
         self.table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self.show_table_context_menu)
 
-        self.toggle_column_visibility(self.toggle_details_action.isChecked()) 
+        # إظهار الأعمدة الأساسية مع إبراز لأيقونات والهاتف لسهولة المتابعة
+        self.table.setColumnHidden(self.COL_ICON, False)
+        self.table.setColumnHidden(self.COL_NIN, False)
+        self.table.setColumnHidden(self.COL_WASSIT, True)
+        self.table.setColumnHidden(self.COL_CCP, True)
+        self.table.setColumnHidden(self.COL_PHONE_NUMBER, False)
 
-        header.setSectionResizeMode(self.COL_ICON, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(self.COL_FULL_NAME_AR, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(self.COL_PHONE_NUMBER, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(self.COL_FULL_NAME_AR, QHeaderView.Stretch)
         header.setSectionResizeMode(self.COL_STATUS, QHeaderView.ResizeToContents)
-        header.setMinimumSectionSize(150)
         header.setSectionResizeMode(self.COL_RDV_DATE, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(self.COL_DETAILS, QHeaderView.Stretch)
-
 
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.verticalHeader().setDefaultSectionSize(30)
         self.table.itemDoubleClicked.connect(self.edit_member_details)
-        self.table.verticalHeader().setVisible(True) 
-        main_layout.addWidget(self.table)
 
+        content_frame = QFrame()
+        content_frame.setObjectName("ContentFrame")
+        content_layout = QHBoxLayout(content_frame)
+        content_layout.setContentsMargins(10, 8, 10, 8)
+        content_layout.setSpacing(0)
+        content_layout.addWidget(self.table)
+        content_layout.setStretch(0, 1)
+
+        main_layout.addWidget(content_frame)
 
         bottom_controls_layout = QHBoxLayout()
+        bottom_controls_layout.setSpacing(10)
         self.add_member_button = QPushButton("إضافة عضو", self)
         self.add_member_button.setObjectName("add_member_button")
         self.add_member_button.setIcon(self.style().standardIcon(QStyle.SP_FileDialogNewFolder))
         self.add_member_button.clicked.connect(self.add_member)
         bottom_controls_layout.addWidget(self.add_member_button)
+
         self.remove_member_button = QPushButton("حذف المحدد", self)
         self.remove_member_button.setObjectName("remove_member_button")
         self.remove_member_button.setIcon(self.style().standardIcon(QStyle.SP_TrashIcon))
         self.remove_member_button.clicked.connect(self.remove_member)
         bottom_controls_layout.addWidget(self.remove_member_button)
+
         bottom_controls_layout.addStretch()
         self.start_button = QPushButton("بدء المراقبة", self)
         self.start_button.setObjectName("start_button")
         self.start_button.setIcon(self.style().standardIcon(QStyle.SP_MediaPlay))
         self.start_button.clicked.connect(self.start_monitoring)
         bottom_controls_layout.addWidget(self.start_button)
+
         self.stop_button = QPushButton("إيقاف المراقبة", self)
         self.stop_button.setObjectName("stop_button")
         self.stop_button.setIcon(self.style().standardIcon(QStyle.SP_MediaStop))
@@ -857,15 +1025,73 @@ class AnemApp(QMainWindow):
            (self.current_subscription_data and self.current_subscription_data.get("status", "").upper() != "ACTIVE"):
             self._disable_app_functions()
         else:
-            self._enable_app_functions() 
+            self._enable_app_functions()
 
         self.update_status_bar_message("التطبيق جاهز.", is_general_message=True)
+        self._update_insight_metrics()
 
     def toggle_search_filter_bar(self, checked):
+        if not self.search_filter_frame:
+            return
         self.search_filter_frame.setVisible(checked)
-        self.toggle_search_filter_action.setChecked(checked) 
+        if self.toggle_search_filter_action:
+            self.toggle_search_filter_action.setChecked(checked)
+
+    def _create_stat_card(self, title, value, subtitle, accent="#4dabf7"):
+        card = QFrame(self)
+        card.setObjectName("StatCard")
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(10, 6, 10, 6)
+        layout.setSpacing(3)
+
+        title_label = QLabel(title)
+        title_label.setObjectName("StatCardTitle")
+        value_label = QLabel(value)
+        value_label.setObjectName("StatCardValue")
+        subtitle_label = QLabel(subtitle)
+        subtitle_label.setObjectName("StatCardSubtitle")
+        subtitle_label.setWordWrap(True)
+
+        layout.addWidget(title_label)
+        layout.addWidget(value_label)
+        layout.addWidget(subtitle_label)
+
+        card.value_label = value_label
+        card.setStyleSheet(
+            f"""
+            QFrame#StatCard {{ background: #0f1726; border: 1px solid #162134; border-radius: 12px; }}
+            QLabel#StatCardTitle {{ color: #a8b8cc; font-weight: 600; font-size: 9.5pt; }}
+            QLabel#StatCardValue {{ color: {accent}; font-weight: 800; font-size: 16px; }}
+            QLabel#StatCardSubtitle {{ color: #90a2ba; font-size: 9pt; }}
+            """
+        )
+        return card
+
+    def _append_activity_entry(self, message, level="info"):
+        """إضافة رسالة إلى لوحة النشاط مع تمييز اللون بحسب مستوى الرسالة."""
+        if not getattr(self, "activity_list", None):
+            return
+        max_items = 12
+        prefix = {"info": "ℹ️", "warn": "⚠️", "error": "❌"}.get(level, "ℹ️")
+        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+        item = QListWidgetItem(f"{prefix} {timestamp} — {message}")
+        if level == "error":
+            item.setForeground(QColor("#ff6b6b"))
+        elif level == "warn":
+            item.setForeground(QColor("#f2c94c"))
+        else:
+            item.setForeground(QColor("#a5d8ff"))
+        self.activity_feed.append(item)
+        if len(self.activity_feed) > max_items:
+            self.activity_feed.pop(0)
+        self.activity_list.clear()
+        for entry in self.activity_feed:
+            self.activity_list.addItem(entry.clone())
+        self.activity_list.scrollToBottom()
 
     def on_filter_by_changed(self, index):
+        if not self.filter_by_combo or not self.filter_value_combo:
+            return
         filter_key = self.filter_by_combo.itemData(index)
         self.filter_value_combo.clear()
         self.filter_value_combo.setVisible(False)
@@ -884,13 +1110,44 @@ class AnemApp(QMainWindow):
         self.apply_filter_and_search() 
 
     def clear_filter_and_search(self):
+        if not self.search_input or not self.filter_by_combo:
+            return
         self.search_input.clear()
-        self.filter_by_combo.setCurrentIndex(0) 
+        self.filter_by_combo.setCurrentIndex(0)
         self._show_toast("تم مسح الفلتر بنجاح.", type="info", title="فلتر")
         self.update_status_bar_message("تم مسح الفلتر.", is_general_message=True)
 
+    def _update_insight_metrics(self):
+        """تحديث البطاقات الإحصائية لتعكس حالة الأعضاء والمتابعة."""
+        if not self.stat_total_card or not self.stat_ready_card or not self.stat_monitor_card:
+            return
+        total_members = len(self.members_list)
+        ready_for_rdv = 0
+        for member in self.members_list:
+            if member.have_allocation:
+                continue
+            if member.already_has_rdv or member.rdv_date:
+                continue
+            if member.has_actual_pre_inscription or member.pre_inscription_id:
+                ready_for_rdv += 1
+
+        monitor_state = "نشط" if self.monitoring_thread.isRunning() else "موقوف"
+        monitor_detail = "المراقبة الدورية تعمل" if monitor_state == "نشط" else "المراقبة متوقفة"
+
+        self.stat_total_card.value_label.setText(str(total_members))
+        self.stat_ready_card.value_label.setText(str(ready_for_rdv))
+        self.stat_monitor_card.value_label.setText(monitor_state)
+        subtitle_label = self.stat_monitor_card.findChild(QLabel, "StatCardSubtitle")
+        if subtitle_label:
+            subtitle_label.setText(monitor_detail)
+
 
     def apply_filter_and_search(self):
+        if not self.search_input or not self.filter_by_combo or not self.filter_value_combo:
+            self.is_filter_active = False
+            self.filtered_members_list = list(self.members_list)
+            self.update_table()
+            return
         search_term = self.search_input.text().lower().strip()
         filter_key = self.filter_by_combo.itemData(self.filter_by_combo.currentIndex())
         filter_value_data = self.filter_value_combo.itemData(self.filter_value_combo.currentIndex())
@@ -1019,6 +1276,17 @@ class AnemApp(QMainWindow):
             member = self.members_list[original_member_index]
             member_display_name = self._get_member_display_name_with_index(member, original_member_index)
 
+            if self.monitoring_thread and getattr(self.monitoring_thread, "robot_enabled", False):
+                member_key = member.nin or member.wassit_no
+                if member_key and not self.monitoring_thread.robot.can_manual_check(member_key):
+                    next_allowed = self.monitoring_thread.robot.scheduler.state_for(member_key).next_allowed_check_at
+                    resume_text = time.strftime("%H:%M", time.localtime(next_allowed)) if next_allowed else "--:--"
+                    self._show_toast(f"العضو في تبريد حتى {resume_text}", type="warning", title="فحص فوري")
+                    return
+                if self.monitoring_thread.robot.scheduler.is_paused():
+                    self._show_toast("الروبوت متوقف مؤقتًا بسبب ضغط الخادم.", type="warning", title="فحص فوري")
+                    return
+
             if member.is_processing: 
                  self._show_toast(f"العضو '{member_display_name}' قيد المعالجة حاليًا. يرجى الانتظار.", type="warning", title="فحص فوري")
                  return
@@ -1028,7 +1296,12 @@ class AnemApp(QMainWindow):
                 return
 
             logger.info(f"طلب فحص فوري للعضو: {member_display_name}")
-            self.update_status_bar_message(f"بدء الفحص الفوري للعضو: {member_display_name}...", is_general_message=False)
+            self.update_status_bar_message(
+                f"بدء الفحص الفوري للعضو: {member_display_name}...",
+                is_general_message=False,
+                busy=True,
+                hint_text="جاري تنفيذ فحص فوري وتحديث الحالة"
+            )
             self._show_toast(f"بدء الفحص الفوري للعضو: {member_display_name}", type="info", title="فحص فوري")
 
             self.single_check_thread = SingleMemberCheckThread(member, original_member_index, self.api_client, self.settings.copy())
@@ -1041,6 +1314,187 @@ class AnemApp(QMainWindow):
         else:
             logger.warning(f"check_member_now: فهرس خاطئ {original_member_index}")
             self._show_toast("خطأ في بدء الفحص الفوري (فهرس غير صالح).", type="error", title="خطأ")
+
+    def _select_row_by_member_index(self, original_member_index, ensure_visible=False):
+        if not (0 <= original_member_index < len(self.members_list)):
+            return -1
+
+        member_obj = self.members_list[original_member_index]
+        current_list_for_view = self.filtered_members_list if self.is_filter_active else self.members_list
+        if member_obj not in current_list_for_view:
+            return -1
+
+        row_in_table = current_list_for_view.index(member_obj)
+        self.table.selectRow(row_in_table)
+        if ensure_visible:
+            target_item = self.table.item(row_in_table, self.COL_FULL_NAME_AR) or self.table.item(row_in_table, self.COL_ICON)
+            if target_item:
+                self.table.scrollToItem(target_item, QAbstractItemView.PositionAtCenter)
+        return row_in_table
+
+    def _resolve_member_index_for_check(self):
+        selected_index = None
+        selection_model = self.table.selectionModel()
+        if selection_model:
+            selected_rows = selection_model.selectedRows()
+            if selected_rows:
+                row = selected_rows[0].row()
+                current_list_for_view = self.filtered_members_list if self.is_filter_active else self.members_list
+                if 0 <= row < len(current_list_for_view):
+                    member_from_view = current_list_for_view[row]
+                    try:
+                        selected_index = self.members_list.index(member_from_view)
+                    except ValueError:
+                        logger.error("فشل العثور على العضو المحدد في القائمة الرئيسية أثناء تجهيز الفحص الفوري عبر الزر.")
+
+        if selected_index is not None:
+            return selected_index
+
+        if self.last_added_member_index is not None and 0 <= self.last_added_member_index < len(self.members_list):
+            return self.last_added_member_index
+
+        return None
+
+    def _refresh_member_overview_from_selection(self):
+        if not self.member_overview_frame:
+            return
+        selection_model = self.table.selectionModel()
+        if not selection_model or not selection_model.selectedRows():
+            self.member_overview_selected_index = None
+            self._set_member_overview_content(None)
+            return
+
+        row = selection_model.selectedRows()[0].row()
+        current_list_for_view = self.filtered_members_list if self.is_filter_active else self.members_list
+        if not (0 <= row < len(current_list_for_view)):
+            self.member_overview_selected_index = None
+            self._set_member_overview_content(None)
+            return
+
+        member = current_list_for_view[row]
+        try:
+            self.member_overview_selected_index = self.members_list.index(member)
+        except ValueError:
+            self.member_overview_selected_index = None
+            self._set_member_overview_content(None)
+            return
+
+        self._set_member_overview_content(member)
+
+    def _badge_for_status(self, status_text):
+        if not status_text:
+            return "ℹ️"
+        if any(keyword in status_text for keyword in ["خطأ", "فشل"]):
+            return "⚠️"
+        if any(keyword in status_text for keyword in ["جاري", "انتظار", "معالجة", "تحميل"]):
+            return "🔄"
+        if any(keyword in status_text for keyword in ["تم الحجز", "مكتمل", "موعد", "مستفيد"]):
+            return "✅"
+        if "جديد" in status_text:
+            return "🆕"
+        return "ℹ️"
+
+    def _describe_member_next_step(self, member):
+        if member.have_allocation:
+            return "المستخدم مستفيد حاليًا، لا حاجة للحجز."
+        if member.already_has_rdv or member.rdv_date:
+            return "موعد مؤكد، تأكد من تنزيل وطباعة الشهادات."
+        if member.has_actual_pre_inscription:
+            return "يتم البحث عن موعد وحجزه فور توفره."
+        if member.pre_inscription_id:
+            return "بيانات التسجيل المسبق جاهزة، بانتظار فتح مواعيد."
+        return "يحتاج للتأكد من بيانات التسجيل المسبق ثم بدء البحث عن موعد."
+
+    def _get_member_wait_text(self, member):
+        if member.is_processing:
+            return "المعالجة جارية لهذا العضو الآن."
+        return self.latest_countdown_text
+
+    def _set_member_overview_content(self, member, status_override=None, next_text=None, wait_text=None, last_msg=None, hint_text=None):
+        if not getattr(self, 'member_overview_title', None):
+            return
+
+        if member is None:
+            self.member_overview_title.setText("👤 لا يوجد عضو محدد")
+            self.member_overview_state.setText("الحالة: --")
+            self.member_overview_next.setText("الخطوة القادمة: --")
+            self.member_overview_wait.setText("الانتظار/التحميل: --")
+            self.member_overview_last.setText("آخر رسالة: --")
+            self.member_overview_hint.setText("اختر عضوًا لمعرفة تفاصيل حالته وخطوته القادمة.")
+            return
+
+        try:
+            member_index_display = self.members_list.index(member) + 1
+        except ValueError:
+            member_index_display = "?"
+
+        display_name = member.get_full_name_ar() or member.nin
+        self.member_overview_title.setText(f"👤 {display_name} (رقم {member_index_display})")
+
+        status_text = status_override or member.status or "غير محدد"
+        badge = self._badge_for_status(status_text)
+        self.member_overview_state.setText(f"الحالة: {badge} {status_text}")
+
+        computed_next = next_text or self._describe_member_next_step(member)
+        self.member_overview_next.setText(f"الخطوة القادمة: {computed_next}")
+
+        wait_display = wait_text or self._get_member_wait_text(member)
+        self.member_overview_wait.setText(f"الانتظار/التحميل: {wait_display}")
+
+        last_detail = last_msg or member.full_last_activity_detail or member.last_activity_detail or "لا توجد رسائل بعد."
+        self.member_overview_last.setText(f"آخر رسالة: {last_detail}")
+
+        if hint_text:
+            self.member_overview_hint.setText(hint_text)
+        else:
+            hint_parts = []
+            if member.already_has_rdv or member.rdv_date:
+                hint_parts.append("يُمكن تحميل شهادات الموعد والتعهد عند الحاجة.")
+            elif member.has_actual_pre_inscription:
+                hint_parts.append("سيتم الحجز تلقائيًا عند ظهور مواعيد.")
+            else:
+                hint_parts.append("تأكد من اكتمال بيانات التسجيل المسبق ورفع الدقة للاتصال.")
+            if member.have_allocation:
+                hint_parts.append("الحالة مكتملة كمستفيد حالي، لا حاجة لإعادة الحجز.")
+            self.member_overview_hint.setText(" • ".join(hint_parts))
+
+    def _ensure_table_selection_after_refresh(self):
+        if self.table.rowCount() == 0:
+            self.member_overview_selected_index = None
+            self._set_member_overview_content(None)
+            return
+
+        selection_model = self.table.selectionModel()
+        if selection_model and selection_model.hasSelection():
+            self._refresh_member_overview_from_selection()
+            return
+
+        # حاول اختيار آخر عضو مضاف أو أول صف
+        target_index = None
+        if self.last_added_member_index is not None and 0 <= self.last_added_member_index < len(self.members_list):
+            target_index = self.last_added_member_index
+        else:
+            target_index = 0
+
+        row_selected = self._select_row_by_member_index(target_index, ensure_visible=False)
+        if row_selected >= 0:
+            self.member_overview_selected_index = target_index
+            self._refresh_member_overview_from_selection()
+
+    def trigger_manual_check_for_selected(self):
+        target_index = self._resolve_member_index_for_check()
+        if target_index is None:
+            self._show_toast("يرجى اختيار عضو لفحصه أو إضافة عضو جديد أولًا.", type="warning", title="فحص فوري")
+            self.update_status_bar_message(
+                "لم يتم العثور على عضو محدد لإجراء الفحص.",
+                is_general_message=True,
+                hint_text="حدد عضو من الجدول ثم اضغط فحص",
+                busy=False,
+            )
+            return
+
+        self._select_row_by_member_index(target_index, ensure_visible=True)
+        self.check_member_now(target_index)
 
     def download_all_member_pdfs(self, original_member_index):
         if not self.activation_successful or (self.current_subscription_data and self.current_subscription_data.get("status","").upper() != "ACTIVE"):
@@ -1067,7 +1521,12 @@ class AnemApp(QMainWindow):
             return
 
         logger.info(f"طلب تحميل جميع الشهادات للعضو: {member_display_name}")
-        self.update_status_bar_message(f"بدء تحميل جميع الشهادات لـ {member_display_name}...", is_general_message=False)
+        self.update_status_bar_message(
+            f"بدء تحميل جميع الشهادات لـ {member_display_name}...",
+            is_general_message=False,
+            busy=True,
+            hint_text="جاري تحميل الشهادات وتجهيز الملفات"
+        )
         self._show_toast(f"بدء تحميل جميع الشهادات لـ {member_display_name}", type="info", title="تحميل الشهادات")
 
         all_pdfs_thread = DownloadAllPdfsThread(member, original_member_index, self.api_client)
@@ -1087,7 +1546,13 @@ class AnemApp(QMainWindow):
         if 0 <= original_member_index < len(self.members_list):
             member = self.members_list[original_member_index]
             member_display_name = self._get_member_display_name_with_index(member, original_member_index)
-            self.update_status_bar_message(f"انتهت معالجة تحميل الشهادات للعضو: {member_display_name}", is_general_message=True)
+            self.update_status_bar_message(
+                f"انتهت معالجة تحميل الشهادات للعضو: {member_display_name}",
+                is_general_message=True,
+                level="success",
+                busy=False,
+                hint_text="اكتمل تحميل الشهادات"
+            )
 
 
     def handle_individual_pdf_status(self, original_member_index, pdf_type, file_path_or_status_msg_from_thread, success, error_msg_for_toast_from_thread):
@@ -1109,13 +1574,25 @@ class AnemApp(QMainWindow):
             member.set_activity_detail(file_path_or_status_msg_from_thread if os.path.exists(file_path_or_status_msg_from_thread) else activity_detail)
             toast_msg = f"{activity_detail}\nالمسار: {file_path}"
             self._show_toast(toast_msg, type="success", duration=5000, title=f"تحميل شهادة {pdf_type_ar}")
-            self.update_status_bar_message(f"تم تحميل شهادة {pdf_type_ar} للعضو {member_name_display}.", is_general_message=True)
+            self.update_status_bar_message(
+                f"تم تحميل شهادة {pdf_type_ar} للعضو {member_name_display}.",
+                is_general_message=True,
+                level="success",
+                busy=False,
+                hint_text="آخر عملية تحميل مكتملة"
+            )
         else:
             activity_detail = file_path_or_status_msg_from_thread 
             member.set_activity_detail(activity_detail, is_error=True)
             toast_msg = f"فشل تحميل شهادة {pdf_type_ar}. السبب: {error_msg_for_toast_from_thread or activity_detail}"
             self._show_toast(toast_msg, type="error", duration=6000, title=f"فشل تحميل شهادة {pdf_type_ar}")
-            self.update_status_bar_message(f"فشل تحميل شهادة {pdf_type_ar} للعضو {member_name_display}.", is_general_message=True)
+            self.update_status_bar_message(
+                f"فشل تحميل شهادة {pdf_type_ar} للعضو {member_name_display}.",
+                is_general_message=True,
+                level="error",
+                busy=False,
+                hint_text="يرجى إعادة المحاولة بعد التحقق من الاتصال"
+            )
 
         self.update_member_gui_in_table(original_member_index, member.status, member.last_activity_detail, get_icon_name_for_status(member.status))
         self.save_members_data()
@@ -1347,9 +1824,14 @@ class AnemApp(QMainWindow):
             logger.debug(f"Toast for message_id '{message_id}' already shown. Skipping.")
             return
 
-        toast = ToastNotification(self) 
-        self.toast_notifications.append(toast) 
-        toast.showMessage(display_message, title=display_title, type=type, duration=duration, parent_window=self, message_id=message_id) 
+        NotificationManager.instance(self).enqueue(
+            self,
+            display_message,
+            title=display_title,
+            type=type,
+            duration=duration,
+            message_id=message_id,
+        )
         
         if message_id:
             self.toast_shown_for_message_ids.add(message_id)
@@ -1381,15 +1863,19 @@ class AnemApp(QMainWindow):
     def update_datetime(self):
         now = QDateTime.currentDateTime()
         arabic_locale = QLocale(QLocale.Arabic, QLocale.Algeria)
-        self.datetime_label.setText(arabic_locale.toString(now, "dddd, dd MMMM yy - hh:mm:ss AP"))
+        if self.datetime_label:
+            self.datetime_label.setText(arabic_locale.toString(now, "dddd, dd MMMM yy - hh:mm:ss AP"))
 
 
     def toggle_column_visibility(self, checked):
+        if not self.table:
+            return
         self.table.setColumnHidden(self.COL_NIN, not checked)
         self.table.setColumnHidden(self.COL_WASSIT, not checked)
         self.table.setColumnHidden(self.COL_CCP, not checked)
         self.table.setColumnHidden(self.COL_PHONE_NUMBER, not checked)
-        self.toggle_details_action.setText("إخفاء التفاصيل" if checked else "إظهار التفاصيل")
+        if self.toggle_details_action:
+            self.toggle_details_action.setText("إخفاء التفاصيل" if checked else "إظهار التفاصيل")
         self.update_status_bar_message(f"تم {'إظهار' if checked else 'إخفاء'} الأعمدة التفصيلية.", is_general_message=True)
 
 
@@ -1455,8 +1941,8 @@ class AnemApp(QMainWindow):
 
         member_display_name = self._get_member_display_name_with_index(member, original_member_index)
         if is_processing_now:
-            self.active_spinner_row_in_view = row_in_table_to_update 
-            self.spinner_char_idx = 0 
+            self.active_spinner_row_in_view = row_in_table_to_update
+            self.spinner_char_idx = 0
 
             self.table.selectRow(row_in_table_to_update)
             first_column_item = self.table.item(row_in_table_to_update, 0) 
@@ -1470,32 +1956,58 @@ class AnemApp(QMainWindow):
 
             self.highlight_processing_row(row_in_table_to_update, force_processing_display=True) 
 
-            if not self.row_spinner_timer.isActive(): 
+            if not self.row_spinner_timer.isActive():
                 self.row_spinner_timer.start(self.row_spinner_timer_interval)
 
             self.update_status_bar_message(f"جاري معالجة العضو: {member_display_name}...", is_general_message=False)
+            self._set_member_overview_content(
+                member,
+                status_override=f"جاري المعالجة ({member.status})",
+                wait_text="المعالجة جارية لهذا العضو الآن.",
+                last_msg=member.full_last_activity_detail or member.last_activity_detail,
+            )
 
-        else: 
+        else:
             is_still_pdf_downloading = self.active_download_all_pdfs_threads.get(original_member_index) and \
                                        self.active_download_all_pdfs_threads[original_member_index].isRunning()
             is_still_single_checking = self.single_check_thread and \
                                        self.single_check_thread.isRunning() and \
                                        self.single_check_thread.index == original_member_index
 
-            if not is_still_pdf_downloading and not is_still_single_checking: 
-                if self.active_spinner_row_in_view == row_in_table_to_update: 
+            if not is_still_pdf_downloading and not is_still_single_checking:
+                if self.active_spinner_row_in_view == row_in_table_to_update:
                     self.row_spinner_timer.stop()
-                    self.active_spinner_row_in_view = -1 
+                    self.active_spinner_row_in_view = -1
                     icon_item = self.table.item(row_in_table_to_update, self.COL_ICON)
                     if icon_item:
-                        icon_item.setText("") 
+                        icon_item.setText("")
 
-            self.highlight_processing_row(row_in_table_to_update, force_processing_display=False) 
+            self.highlight_processing_row(row_in_table_to_update, force_processing_display=False)
+            if self.member_overview_selected_index == original_member_index:
+                self._set_member_overview_content(
+                    member,
+                    status_override=member.status,
+                    wait_text=self.latest_countdown_text,
+                    last_msg=member.full_last_activity_detail or member.last_activity_detail,
+                )
 
+
+    def _status_marker_and_color(self, status_text):
+        """Return a soft marker bullet and color for status text with minimal palette."""
+        accent = QColor("#9ab7ff")
+        warning = QColor("#f2b8b5")
+        marker = "• "
+
+        lowered = status_text or ""
+        is_warning = any(keyword in lowered for keyword in [
+            "فشل", "خطأ", "غير مؤهل", "غير صالح", "منتهي", "إلغاء"
+        ])
+        color = warning if is_warning else accent
+        return marker, color
 
     def highlight_processing_row(self, row_index_in_table, force_processing_display=None):
         if not (0 <= row_index_in_table < self.table.rowCount()):
-            return 
+            return
 
         current_list_displayed = self.filtered_members_list if self.is_filter_active else self.members_list
         if row_index_in_table >= len(current_list_displayed): 
@@ -1511,40 +2023,34 @@ class AnemApp(QMainWindow):
 
         default_bg_color = self.table.palette().color(QPalette.Base)
         alternate_bg_color = QColor(self.table.palette().color(QPalette.AlternateBase)) if self.table.alternatingRowColors() else default_bg_color
-        processing_bg_color = QColorConstants.PROCESSING_ROW_DARK_THEME
-        selection_bg_color_from_qss = QColor("#00A2E8") 
+        processing_bg_color = QColor(30, 37, 52)
+        selection_bg_color_from_qss = QColor("#0e6ad5")
 
         for col in range(self.table.columnCount()):
             item = self.table.item(row_index_in_table, col)
             if item:
-                if is_processing_flag: 
-                    item.setBackground(processing_bg_color)
-                    item.setForeground(Qt.white)
-                elif is_row_selected_by_user_or_code: 
-                    if item.background() != selection_bg_color_from_qss: 
-                         item.setBackground(selection_bg_color_from_qss)
-                    if item.foreground().color() != Qt.white: 
-                         item.setForeground(Qt.white)
-                else: 
-                    status_text_for_color = member.status
-                    specific_color = None
-                    if status_text_for_color == "مستفيد حاليًا من المنحة": specific_color = QColorConstants.BENEFITING_GREEN_DARK_THEME
-                    elif status_text_for_color == "بيانات الإدخال خاطئة": specific_color = QColorConstants.PINK_DARK_THEME
-                    elif status_text_for_color == "لديه موعد مسبق": specific_color = QColorConstants.LIGHT_BLUE_DARK_THEME
-                    elif status_text_for_color == "غير مؤهل للحجز": specific_color = QColorConstants.ORANGE_RED_DARK_THEME
-                    elif status_text_for_color == "مكتمل": specific_color = QColorConstants.LIGHT_GREEN_DARK_THEME
-                    elif "فشل" in status_text_for_color or "غير مؤهل" in status_text_for_color or "خطأ" in status_text_for_color:
-                        specific_color = QColorConstants.LIGHT_PINK_DARK_THEME
-                    elif "يتطلب تسجيل مسبق" in status_text_for_color: specific_color = QColorConstants.LIGHT_YELLOW_DARK_THEME
-
-                    if specific_color:
-                        item.setBackground(specific_color)
-                    else: 
-                        if self.table.alternatingRowColors() and row_index_in_table % 2 != 0 :
-                            item.setBackground(alternate_bg_color)
-                        else:
-                            item.setBackground(default_bg_color)
-                    item.setForeground(self.table.palette().color(QPalette.Text)) 
+                if is_processing_flag:
+                    item.setBackground(processing_bg_color if col != self.COL_STATUS else default_bg_color)
+                    if col == self.COL_STATUS:
+                        _, status_color = self._status_marker_and_color(member.status)
+                        item.setForeground(status_color)
+                    else:
+                        item.setForeground(self.table.palette().color(QPalette.Text))
+                elif is_row_selected_by_user_or_code:
+                    if item.background() != selection_bg_color_from_qss:
+                        item.setBackground(selection_bg_color_from_qss)
+                    if item.foreground().color() != Qt.white:
+                        item.setForeground(Qt.white)
+                else:
+                    if self.table.alternatingRowColors() and row_index_in_table % 2 != 0:
+                        item.setBackground(alternate_bg_color)
+                    else:
+                        item.setBackground(default_bg_color)
+                    if col == self.COL_STATUS:
+                        _, status_color = self._status_marker_and_color(member.status)
+                        item.setForeground(status_color)
+                    else:
+                        item.setForeground(self.table.palette().color(QPalette.Text))
 
 
     def add_member(self):
@@ -1576,12 +2082,14 @@ class AnemApp(QMainWindow):
             member = Member(data["nin"], data["wassit_no"], data["ccp"], data["phone_number"])
             self.members_list.append(member)
 
-            if self.is_filter_active: 
+            if self.is_filter_active:
                 self.apply_filter_and_search()
-            else: 
+            else:
                 self.update_table()
 
-            current_original_index = self.members_list.index(member) 
+            current_original_index = self.members_list.index(member)
+            self.last_added_member_index = current_original_index
+            self._select_row_by_member_index(current_original_index, ensure_visible=True)
             member_display_name_add = self._get_member_display_name_with_index(member, current_original_index)
             logger.info(f"تمت إضافة العضو: {member_display_name_add}, Phone={data['phone_number']}")
             self.update_status_bar_message(f"تمت إضافة العضو: {member_display_name_add}. جاري جلب المعلومات الأولية...", is_general_message=False)
@@ -1780,10 +2288,16 @@ class AnemApp(QMainWindow):
             else:
                 logger.warning(f"محاولة حذف عضو {member_to_delete.nin} غير موجود في القائمة الرئيسية.")
 
-        if self.is_filter_active: 
+        if self.is_filter_active:
             self.apply_filter_and_search()
-        else: 
+        else:
             self.update_table()
+
+        if self.members_list:
+            if self.last_added_member_index is not None and self.last_added_member_index >= len(self.members_list):
+                self.last_added_member_index = len(self.members_list) - 1
+        else:
+            self.last_added_member_index = None
 
         if deleted_count > 0:
             self.update_status_bar_message(f"تم حذف {deleted_count} عضو/أعضاء.", is_general_message=True)
@@ -1795,13 +2309,15 @@ class AnemApp(QMainWindow):
 
 
     def update_table(self):
-        self.table.setRowCount(0) 
+        self.table.setRowCount(0)
         list_to_display = self.filtered_members_list if self.is_filter_active else self.members_list
         for row_idx, member_obj in enumerate(list_to_display):
             self.table.insertRow(row_idx)
-            self.update_table_row(row_idx, member_obj) 
-        if not self.is_filter_active: 
+            self.update_table_row(row_idx, member_obj)
+        if not self.is_filter_active:
             self.save_members_data()
+        self._ensure_table_selection_after_refresh()
+        self._update_insight_metrics()
 
     def update_table_row(self, row_in_table, member):
         item_icon = QTableWidgetItem()
@@ -1902,21 +2418,34 @@ class AnemApp(QMainWindow):
 
         icon_item = self.table.item(row_in_table_to_update, self.COL_ICON)
         status_text_item = self.table.item(row_in_table_to_update, self.COL_STATUS)
-        status_text_item.setText(status_text) 
+        marker, color = self._status_marker_and_color(status_text)
+        status_text_item.setText(f"{marker}{status_text}" if status_text else "")
+        status_text_item.setForeground(color)
 
         if icon_item:
             if self.active_spinner_row_in_view == row_in_table_to_update and member.is_processing:
-                icon_item.setIcon(QIcon()) 
-            else: 
+                icon_item.setIcon(QIcon())
+            else:
                 qt_icon = self.style().standardIcon(getattr(QStyle, icon_name_str, QStyle.SP_CustomBase))
                 icon_item.setIcon(qt_icon)
-                icon_item.setText("") 
+                icon_item.setText("")
 
         self.highlight_processing_row(row_in_table_to_update, force_processing_display=None)
 
-        msg_attr_prefix = f"_toast_shown_{original_member_index}_" 
-        if not self.suppress_initial_messages: 
-            current_status_for_toast = status_text 
+        if self.member_overview_selected_index == original_member_index:
+            self._set_member_overview_content(
+                member,
+                status_override=status_text,
+                wait_text=self._get_member_wait_text(member),
+                last_msg=member.full_last_activity_detail or member.last_activity_detail,
+            )
+
+        # تحديث الإحصاءات السريعة فور تغير حالة العضو
+        self._update_insight_metrics()
+
+        msg_attr_prefix = f"_toast_shown_{original_member_index}_"
+        if not self.suppress_initial_messages:
+            current_status_for_toast = status_text
             toast_title_for_member = self._get_member_display_name_with_index(member, original_member_index)
 
             if "فشل" in current_status_for_toast or "خطأ" in current_status_for_toast or "غير مؤهل" in current_status_for_toast:
@@ -1957,34 +2486,155 @@ class AnemApp(QMainWindow):
                         full_name_item.setText(member.get_full_name_ar()) 
                     if not self.suppress_initial_messages: 
                         self._show_toast(f"تم تحديث اسم العضو.", type="info", title=self._get_member_display_name_with_index(member, original_member_index))
-            except ValueError: 
-                pass 
-            self.save_members_data() 
+            except ValueError:
+                pass
+            self.save_members_data()
 
 
-    def update_status_bar_message(self, message, is_general_message=True, member_obj=None, original_idx_if_member=None):
+    def _update_status_chip(self, level="info", label_text="حالة عامة"):
+        if not hasattr(self, 'status_chip_label'):
+            return
+
+        icon_map = {
+            "info": "ℹ️",
+            "success": "✅",
+            "warning": "⚠️",
+            "error": "⛔",
+        }
+        color_map = {
+            "info": "#2d3436",
+            "success": "#1e7e34",
+            "warning": "#d35400",
+            "error": "#c0392b",
+        }
+        icon = icon_map.get(level, "ℹ️")
+        bg_color = color_map.get(level, "#2d3436")
+        self.status_chip_label.setText(f"{icon} {label_text}")
+        self.status_chip_label.setStyleSheet(
+            f"QLabel#StatusChip {{ background: {bg_color}; color: #ecf0f1; border-radius: 8px; padding: 4px 10px; font-weight: 600; }}"
+        )
+
+
+    def _set_status_spinner_running(self, running):
+        if not hasattr(self, 'status_spinner_label'):
+            return
+        if running:
+            if not self.status_spinner_timer.isActive():
+                self.status_spinner_timer.start()
+            self.status_spinner_label.setVisible(True)
+        else:
+            self.status_spinner_timer.stop()
+            self.status_spinner_label.setVisible(False)
+            self.status_spinner_label.setText("")
+
+
+    def _advance_status_spinner(self):
+        if not getattr(self, 'status_spinner_label', None):
+            return
+        self.status_spinner_idx = (self.status_spinner_idx + 1) % len(self.status_spinner_chars)
+        self.status_spinner_label.setText(self.status_spinner_chars[self.status_spinner_idx])
+
+
+    def _update_refresh_hint(self, text=None, busy=False):
+        if getattr(self, 'refresh_hint_label', None):
+            if text is not None:
+                self.refresh_hint_label.setText(text)
+            elif not self.refresh_hint_label.text().strip():
+                self.refresh_hint_label.setText("لا يوجد تحديث نشط")
+        self._set_status_spinner_running(busy)
+
+
+    def _format_wait_time(self, seconds):
+        try:
+            seconds = int(seconds)
+        except (TypeError, ValueError):
+            return None
+        if seconds < 0:
+            seconds = 0
+        minutes, remaining_seconds = divmod(seconds, 60)
+        hours, remaining_minutes = divmod(minutes, 60)
+        if hours:
+            return f"{hours:02d}:{remaining_minutes:02d}:{remaining_seconds:02d}"
+        return f"{remaining_minutes:02d}:{remaining_seconds:02d}"
+
+
+    def _set_operation_panel(self, current_text=None, next_text=None, wait_seconds=None, level="info"):
+        if not getattr(self, 'operation_current_label', None):
+            return
+
+        color_map = {
+            "info": "#e9eef5",
+            "success": "#b5e48c",
+            "warning": "#f6c344",
+            "error": "#f28b82",
+        }
+        badge_color = color_map.get(level, "#e9eef5")
+
+        if current_text:
+            self.operation_current_label.setText(f"حالة العمليات: {current_text}")
+        if next_text:
+            self.operation_next_label.setText(f"التالي: {next_text}")
+        if wait_seconds is not None:
+            formatted = self._format_wait_time(wait_seconds)
+            self.operation_timer_label.setText(f"الزمن المتبقي: {formatted if formatted else '--'}")
+
+        self.operation_current_label.setStyleSheet(
+            f"QLabel#OperationCurrent {{ color: {badge_color}; font-weight: 700; }}"
+        )
+
+
+    def update_status_bar_message(self, message, is_general_message=True, member_obj=None, original_idx_if_member=None, level="info", busy=False, hint_text=None):
         final_message = message
+        member_display = None
         if member_obj and original_idx_if_member is not None and original_idx_if_member >= 0:
             member_display = self._get_member_display_name_with_index(member_obj, original_idx_if_member)
             final_message = f"{member_display}: {message}"
 
-        if hasattr(self, 'status_bar_label'): 
+        if hasattr(self, 'status_bar_label'):
             self.status_bar_label.setText(final_message)
 
-        if hasattr(self, 'last_scan_label'): 
-            if not is_general_message or "انتهاء دورة الفحص" in message or "بدء دورة فحص جديدة" in message or "استئناف المراقبة" in message or "الموقع لا يزال غير متاح" in message or "اكتمل الفحص الأولي" in message:
-                self.last_scan_label.setText(f"آخر تحديث: {time.strftime('%H:%M:%S')}")
-            elif is_general_message: 
-                self.last_scan_label.setText("")
+        if hasattr(self, 'current_member_label'):
+            if member_display:
+                self.current_member_label.setText(f"العضو الحالي: {member_display}")
+            elif not is_general_message:
+                self.current_member_label.setText("العضو الحالي: --")
 
-        if hasattr(self, 'countdown_label'): 
-            if is_general_message and hasattr(self, 'last_scan_label') and self.last_scan_label.text() == "":
-                 self.countdown_label.setText("")
+        if hasattr(self, 'countdown_label') and not self.countdown_label.text().strip():
+            self.countdown_label.setText("لا يوجد انتظار")
 
 
     def update_countdown_timer_display(self, time_remaining_str):
-        if hasattr(self, 'countdown_label'): 
-            self.countdown_label.setText(time_remaining_str)
+        if hasattr(self, 'countdown_label'):
+            display_text = time_remaining_str.strip()
+            if display_text:
+                self.countdown_label.setText(f"المحاولة التالية بعد: {display_text}")
+                self.countdown_label.setToolTip("الوقت المتبقي قبل تنفيذ الخطوة التالية")
+                self.latest_countdown_text = display_text
+            else:
+                self.countdown_label.setText("لا يوجد انتظار")
+                self.countdown_label.setToolTip("لا يوجد انتظار حالي")
+                self.latest_countdown_text = "لا يوجد انتظار حالي"
+
+    def update_robot_status_panel(self, mode, next_check_text, last_alert, round_index):
+        if not self.robot_status_frame:
+            return
+        if mode == "burst":
+            mode_label = "BURST"
+        elif mode == "PAUSED_RATE_LIMIT":
+            mode_label = "PAUSED_RATE_LIMIT"
+        elif mode == "paused":
+            mode_label = "PAUSED"
+        else:
+            mode_label = "SLEEP"
+        self.robot_mode_label.setText(f"الوضع: {mode_label}")
+        self.robot_next_label.setText(f"الجولة: {round_index} • الفحص التالي: {next_check_text}")
+        self.robot_alert_label.setText(f"آخر تنبيه: {last_alert}")
+
+    def _handle_robot_alert(self, message):
+        if not message:
+            return
+        self._show_toast(message, type="info", title="روبوت المراقبة")
+
 
 
     def start_monitoring(self):
@@ -2009,11 +2659,23 @@ class AnemApp(QMainWindow):
             self.add_member_button.setEnabled(False) 
             self.remove_member_button.setEnabled(False) 
             monitoring_interval_minutes = self.settings.get(SETTING_MONITORING_INTERVAL, DEFAULT_SETTINGS[SETTING_MONITORING_INTERVAL])
-            self.update_status_bar_message(f"بدأت المراقبة (الدورة كل {monitoring_interval_minutes} دقيقة)...", is_general_message=False)
+            self.update_status_bar_message(
+                f"بدأت المراقبة (الدورة كل {monitoring_interval_minutes} دقيقة)...",
+                is_general_message=False,
+                busy=True,
+                hint_text=f"المراقبة نشطة - الدورة كل {monitoring_interval_minutes} دقيقة"
+            )
+            self._set_operation_panel(
+                current_text="المراقبة الدورية قيد التنفيذ",
+                next_text="الدورة القادمة حسب الإعداد",
+                wait_seconds=int(float(monitoring_interval_minutes) * 60),
+                level="info",
+            )
             self._show_toast(f"بدأت المراقبة (الدورة كل {monitoring_interval_minutes} دقيقة).", type="info", title="المراقبة")
+            self._update_insight_metrics()
         else:
             self._show_toast("المراقبة جارية بالفعل.", type="info", title="المراقبة")
-            self.update_status_bar_message("المراقبة جارية بالفعل.", is_general_message=True)
+            self.update_status_bar_message("المراقبة جارية بالفعل.", is_general_message=True, hint_text="المراقبة تعمل")
 
 
     def stop_monitoring(self):
@@ -2037,21 +2699,23 @@ class AnemApp(QMainWindow):
                 self.active_spinner_row_in_view = -1 
 
             if self.activation_successful and self.current_subscription_data and self.current_subscription_data.get("status","").upper() == "ACTIVE":
-                self._enable_app_functions() 
+                self._enable_app_functions()
             else:
-                self._disable_app_functions() 
-                self.stop_button.setEnabled(False) 
+                self._disable_app_functions()
+                self.stop_button.setEnabled(False)
 
-            self.update_status_bar_message("تم إيقاف المراقبة بنجاح.", is_general_message=True)
+            self.update_status_bar_message("تم إيقاف المراقبة بنجاح.", is_general_message=True, level="warning", busy=False, hint_text="المراقبة متوقفة")
+            self._set_operation_panel(current_text="المراقبة متوقفة", next_text="اضغط بدء للمراقبة", level="warning", wait_seconds=0)
             self._show_toast("تم إيقاف المراقبة.", type="info", title="المراقبة")
-            self.update_countdown_timer_display("") 
+            self.update_countdown_timer_display("")
             for i in range(len(self.members_list)):
                 if self.members_list[i].is_processing:
                     self.members_list[i].is_processing = False
                     self.update_member_gui_in_table(i, self.members_list[i].status, self.members_list[i].last_activity_detail, get_icon_name_for_status(self.members_list[i].status))
+            self._update_insight_metrics()
         else:
             self._show_toast("المراقبة ليست جارية حاليًا.", type="info", title="المراقبة")
-            self.update_status_bar_message("المراقبة ليست جارية.", is_general_message=True)
+            self.update_status_bar_message("المراقبة ليست جارية.", is_general_message=True, hint_text="لا يوجد عمل مجدول")
 
 
     def load_members_data(self):
@@ -2101,13 +2765,14 @@ class AnemApp(QMainWindow):
                 self.update_status_bar_message(f"خطأ غير متوقع عند تحميل البيانات الاحتياطية: {e}", is_general_message=True)
                 self._show_toast(f"خطأ غير متوقع عند تحميل البيانات الاحتياطية: {e}", type="error", duration=6000, title="خطأ بيانات")
 
-        if not loaded_successfully: 
+        if not loaded_successfully:
             self.members_list = []
             logger.info(f"لم يتم العثور على ملف البيانات ({primary_path}) أو الملف الاحتياطي ({backup_path})، أو كلاهما تالف. سيبدأ البرنامج بقائمة فارغة.")
             self.update_status_bar_message(f"ملف البيانات غير موجود أو تالف. يمكنك إضافة أعضاء جدد.", is_general_message=True)
 
-        self.filtered_members_list = list(self.members_list) 
-        self.update_table() 
+        self.last_added_member_index = (len(self.members_list) - 1) if self.members_list else None
+        self.filtered_members_list = list(self.members_list)
+        self.update_table()
 
         QTimer.singleShot(200, lambda: setattr(self, 'suppress_initial_messages', False))
 

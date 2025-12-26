@@ -1,0 +1,7 @@
+PyQt5
+requests
+urllib3
+firebase-admin
+google-cloud-firestore
+google-auth
+google-api-core

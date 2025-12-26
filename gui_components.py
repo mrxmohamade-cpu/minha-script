@@ -1,19 +1,22 @@
 # gui_components.py (User App - Updated Dialogs V2 - Enhanced ActivationDialog UI - Revamped Toast - Message Dialog)
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QDialog, QFormLayout, QDialogButtonBox,
+    QPushButton, QDialog, QFormLayout, QDialogButtonBox, QCheckBox,
     QSpinBox, QStyle, QApplication, QDesktopWidget, QTextEdit,
-    QScrollArea, QFrame,QSizePolicy, QGridLayout, QGraphicsDropShadowEffect,
+    QScrollArea, QFrame,QSizePolicy, QGridLayout, QGraphicsDropShadowEffect, QGraphicsOpacityEffect,
     QListWidget, QListWidgetItem, QTextBrowser # تمت إضافة QListWidget و QTextBrowser
 )
-from PyQt5.QtCore import Qt, QTimer, QPoint, QEasingCurve, QPropertyAnimation, QRegularExpression, pyqtSignal, QDateTime
+from PyQt5.QtCore import Qt, QTimer, QPoint, QEasingCurve, QPropertyAnimation, QRegularExpression, pyqtSignal, QDateTime, QEvent, QUrl, QObject
 from PyQt5.QtGui import QIcon, QRegularExpressionValidator, QColor, QPixmap, QFont, QTextDocument # تمت إضافة QTextDocument
+import os
+from PyQt5.QtMultimedia import QSoundEffect
 
 from utils import QColorConstants # Assuming utils.py is available and contains QColorConstants
 import datetime # Ensure datetime is imported for type checking
 
 
 class ToastNotification(QWidget):
+    closed = pyqtSignal()
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.ToolTip | Qt.WindowStaysOnTopHint)
@@ -88,6 +91,7 @@ class ToastNotification(QWidget):
     def _on_animation_finished(self):
         if self.windowOpacity() == 0:
             self.hide()
+            self.closed.emit()
             self.deleteLater() # Clean up the widget after hiding
 
     def _start_fade_out(self):
@@ -174,6 +178,84 @@ class ToastNotification(QWidget):
         self.animation.setEndValue(1.0) # Fade in
         self.animation.start()
         self.timer.start(duration)
+
+
+class NotificationManager(QObject):
+    _instance = None
+
+    @classmethod
+    def instance(cls, parent=None):
+        if cls._instance is None:
+            cls._instance = cls(parent)
+        return cls._instance
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        if getattr(self, "_initialized", False):
+            return
+        self._initialized = True
+        self._queue = []
+        self._current_toast = None
+        self._recent_signatures = {}
+        self._sound = QSoundEffect()
+        self._sound.setLoopCount(1)
+        self._sound.setVolume(0.6)
+        self._sound_enabled = True
+        self._sound_error_logged = False
+        self._sound.statusChanged.connect(self._handle_sound_status)
+
+    def enqueue(self, parent_window, message, title=None, type="info", duration=4000, message_id=None):
+        signature = f"{title or ''}_{message}_{type}"
+        now_ts = QDateTime.currentSecsSinceEpoch()
+        last_ts = self._recent_signatures.get(signature)
+        if last_ts and now_ts - last_ts < 5:
+            return
+        self._recent_signatures[signature] = now_ts
+
+        self._queue.append((parent_window, message, title, type, duration, message_id))
+        if not self._current_toast:
+            self._show_next()
+
+    def _show_next(self):
+        if not self._queue:
+            self._current_toast = None
+            return
+        parent_window, message, title, type, duration, message_id = self._queue.pop(0)
+        toast = ToastNotification(parent_window)
+        self._current_toast = toast
+        toast.closed.connect(self._on_toast_closed)
+        self._play_sound(type)
+        toast.showMessage(message, title=title, type=type, duration=duration, parent_window=parent_window, message_id=message_id)
+
+    def _on_toast_closed(self):
+        self._current_toast = None
+        self._show_next()
+
+    def _play_sound(self, toast_type):
+        if not self._sound_enabled:
+            return
+        sound_map = {
+            "success": "sounds/success.wav",
+            "warning": "sounds/warning.wav",
+            "error": "sounds/error.wav",
+            "info": "sounds/info.wav",
+        }
+        sound_path = sound_map.get(toast_type)
+        if not sound_path:
+            return
+        if not os.path.exists(sound_path):
+            if not self._sound_error_logged:
+                self._sound_error_logged = True
+            self._sound_enabled = False
+            return
+        self._sound.setSource(QUrl.fromLocalFile(sound_path))
+        self._sound.play()
+
+    def _handle_sound_status(self):
+        if self._sound.status() == QSoundEffect.Error:
+            if not self._sound_error_logged:
+                self._sound_error_logged = True
+            self._sound_enabled = False
 
 
 class AddMemberDialog(QDialog):
@@ -311,39 +393,53 @@ class SettingsDialog(QDialog):
         self.setMinimumWidth(400)
 
         from config import ( 
-            SETTING_MIN_MEMBER_DELAY, SETTING_MAX_MEMBER_DELAY,
-            SETTING_MONITORING_INTERVAL, SETTING_BACKOFF_429,
-            SETTING_BACKOFF_GENERAL, SETTING_REQUEST_TIMEOUT, DEFAULT_SETTINGS
+            SETTING_REQUEST_TIMEOUT, DEFAULT_SETTINGS,
+            SETTING_ROBOT_ENABLED, SETTING_ROBOT_BASE_INTERVAL,
+            SETTING_ROBOT_BURST_MIN, SETTING_ROBOT_FREEZE_HAS_RDV_DAYS,
+            SETTING_ROBOT_RATE_LIMIT_PAUSE_MIN, SETTING_ROBOT_RATE_LIMIT_PAUSE_MAX,
+            SETTING_ROBOT_RATE_LIMIT_WINDOW, SETTING_ROBOT_RATE_LIMIT_THRESHOLD
         )
 
         self.current_settings = current_settings
         layout = QFormLayout(self)
         layout.setLabelAlignment(Qt.AlignRight)
 
-        self.min_delay_spin = QSpinBox(self)
-        self.min_delay_spin.setRange(1, 300)
-        self.min_delay_spin.setValue(self.current_settings.get(SETTING_MIN_MEMBER_DELAY, DEFAULT_SETTINGS[SETTING_MIN_MEMBER_DELAY]))
-        self.min_delay_spin.setSuffix(" ثانية")
+        self.robot_enabled_check = QCheckBox("تفعيل روبوت المراقبة الذكي", self)
+        self.robot_enabled_check.setChecked(self.current_settings.get(SETTING_ROBOT_ENABLED, True))
 
-        self.max_delay_spin = QSpinBox(self)
-        self.max_delay_spin.setRange(1, 600)
-        self.max_delay_spin.setValue(self.current_settings.get(SETTING_MAX_MEMBER_DELAY, DEFAULT_SETTINGS[SETTING_MAX_MEMBER_DELAY]))
-        self.max_delay_spin.setSuffix(" ثانية")
+        self.robot_base_interval_spin = QSpinBox(self)
+        self.robot_base_interval_spin.setRange(6, 30)
+        self.robot_base_interval_spin.setValue(self.current_settings.get(SETTING_ROBOT_BASE_INTERVAL, DEFAULT_SETTINGS[SETTING_ROBOT_BASE_INTERVAL]))
+        self.robot_base_interval_spin.setSuffix(" ثانية")
 
-        self.monitoring_interval_spin = QSpinBox(self)
-        self.monitoring_interval_spin.setRange(1, 120)
-        self.monitoring_interval_spin.setValue(self.current_settings.get(SETTING_MONITORING_INTERVAL, DEFAULT_SETTINGS[SETTING_MONITORING_INTERVAL]))
-        self.monitoring_interval_spin.setSuffix(" دقيقة")
+        self.robot_burst_spin = QSpinBox(self)
+        self.robot_burst_spin.setRange(10, 60)
+        self.robot_burst_spin.setValue(self.current_settings.get(SETTING_ROBOT_BURST_MIN, DEFAULT_SETTINGS[SETTING_ROBOT_BURST_MIN]))
+        self.robot_burst_spin.setSuffix(" دقيقة")
 
-        self.backoff_429_spin = QSpinBox(self)
-        self.backoff_429_spin.setRange(10, 3600)
-        self.backoff_429_spin.setValue(self.current_settings.get(SETTING_BACKOFF_429, DEFAULT_SETTINGS[SETTING_BACKOFF_429]))
-        self.backoff_429_spin.setSuffix(" ثانية")
+        self.robot_freeze_rdv_spin = QSpinBox(self)
+        self.robot_freeze_rdv_spin.setRange(1, 30)
+        self.robot_freeze_rdv_spin.setValue(self.current_settings.get(SETTING_ROBOT_FREEZE_HAS_RDV_DAYS, DEFAULT_SETTINGS[SETTING_ROBOT_FREEZE_HAS_RDV_DAYS]))
+        self.robot_freeze_rdv_spin.setSuffix(" يوم")
 
-        self.backoff_general_spin = QSpinBox(self)
-        self.backoff_general_spin.setRange(1, 300)
-        self.backoff_general_spin.setValue(self.current_settings.get(SETTING_BACKOFF_GENERAL, DEFAULT_SETTINGS[SETTING_BACKOFF_GENERAL]))
-        self.backoff_general_spin.setSuffix(" ثانية")
+        self.robot_pause_min_spin = QSpinBox(self)
+        self.robot_pause_min_spin.setRange(10, 300)
+        self.robot_pause_min_spin.setValue(int(self.current_settings.get(SETTING_ROBOT_RATE_LIMIT_PAUSE_MIN, DEFAULT_SETTINGS[SETTING_ROBOT_RATE_LIMIT_PAUSE_MIN]) / 60))
+        self.robot_pause_min_spin.setSuffix(" دقيقة")
+
+        self.robot_pause_max_spin = QSpinBox(self)
+        self.robot_pause_max_spin.setRange(30, 360)
+        self.robot_pause_max_spin.setValue(int(self.current_settings.get(SETTING_ROBOT_RATE_LIMIT_PAUSE_MAX, DEFAULT_SETTINGS[SETTING_ROBOT_RATE_LIMIT_PAUSE_MAX]) / 60))
+        self.robot_pause_max_spin.setSuffix(" دقيقة")
+
+        self.robot_rate_limit_threshold_spin = QSpinBox(self)
+        self.robot_rate_limit_threshold_spin.setRange(1, 5)
+        self.robot_rate_limit_threshold_spin.setValue(self.current_settings.get(SETTING_ROBOT_RATE_LIMIT_THRESHOLD, DEFAULT_SETTINGS[SETTING_ROBOT_RATE_LIMIT_THRESHOLD]))
+
+        self.robot_rate_limit_window_spin = QSpinBox(self)
+        self.robot_rate_limit_window_spin.setRange(5, 60)
+        self.robot_rate_limit_window_spin.setValue(int(self.current_settings.get(SETTING_ROBOT_RATE_LIMIT_WINDOW, DEFAULT_SETTINGS[SETTING_ROBOT_RATE_LIMIT_WINDOW]) / 60))
+        self.robot_rate_limit_window_spin.setSuffix(" دقيقة")
         
         self.request_timeout_spin = QSpinBox(self)
         self.request_timeout_spin.setRange(5, 120)
@@ -351,11 +447,14 @@ class SettingsDialog(QDialog):
         self.request_timeout_spin.setSuffix(" ثانية")
 
 
-        layout.addRow("أقل تأخير بين الأعضاء:", self.min_delay_spin)
-        layout.addRow("أقصى تأخير بين الأعضاء:", self.max_delay_spin)
-        layout.addRow("الفاصل الزمني لدورة المراقبة:", self.monitoring_interval_spin)
-        layout.addRow("تأخير أولي لخطأ 429 (طلبات كثيرة):", self.backoff_429_spin)
-        layout.addRow("تأخير أولي للأخطاء العامة:", self.backoff_general_spin)
+        layout.addRow(self.robot_enabled_check)
+        layout.addRow("الفاصل العالمي بين الطلبات:", self.robot_base_interval_spin)
+        layout.addRow("مدة وضع الطوارئ (Burst):", self.robot_burst_spin)
+        layout.addRow("تجميد من لديه موعد:", self.robot_freeze_rdv_spin)
+        layout.addRow("إيقاف مؤقت بعد 429 (حد أدنى):", self.robot_pause_min_spin)
+        layout.addRow("إيقاف مؤقت بعد 429 (حد أقصى):", self.robot_pause_max_spin)
+        layout.addRow("حد تكرار 429 قبل تشديد الإيقاف:", self.robot_rate_limit_threshold_spin)
+        layout.addRow("نافذة احتساب 429:", self.robot_rate_limit_window_spin)
         layout.addRow("مهلة الطلب للواجهة البرمجية (API):", self.request_timeout_spin)
 
 
@@ -368,22 +467,22 @@ class SettingsDialog(QDialog):
 
     def get_settings(self):
         from config import ( 
-            SETTING_MIN_MEMBER_DELAY, SETTING_MAX_MEMBER_DELAY,
-            SETTING_MONITORING_INTERVAL, SETTING_BACKOFF_429,
-            SETTING_BACKOFF_GENERAL, SETTING_REQUEST_TIMEOUT
+            SETTING_REQUEST_TIMEOUT,
+            SETTING_ROBOT_ENABLED, SETTING_ROBOT_BASE_INTERVAL,
+            SETTING_ROBOT_BURST_MIN, SETTING_ROBOT_FREEZE_HAS_RDV_DAYS,
+            SETTING_ROBOT_RATE_LIMIT_PAUSE_MIN, SETTING_ROBOT_RATE_LIMIT_PAUSE_MAX,
+            SETTING_ROBOT_RATE_LIMIT_WINDOW, SETTING_ROBOT_RATE_LIMIT_THRESHOLD
         )
-        min_val = self.min_delay_spin.value()
-        max_val = self.max_delay_spin.value()
-        if min_val > max_val:
-            min_val = max_val
-            self.min_delay_spin.setValue(min_val)
 
         return {
-            SETTING_MIN_MEMBER_DELAY: min_val,
-            SETTING_MAX_MEMBER_DELAY: max_val,
-            SETTING_MONITORING_INTERVAL: self.monitoring_interval_spin.value(),
-            SETTING_BACKOFF_429: self.backoff_429_spin.value(),
-            SETTING_BACKOFF_GENERAL: self.backoff_general_spin.value(),
+            SETTING_ROBOT_ENABLED: self.robot_enabled_check.isChecked(),
+            SETTING_ROBOT_BASE_INTERVAL: self.robot_base_interval_spin.value(),
+            SETTING_ROBOT_BURST_MIN: self.robot_burst_spin.value(),
+            SETTING_ROBOT_FREEZE_HAS_RDV_DAYS: self.robot_freeze_rdv_spin.value(),
+            SETTING_ROBOT_RATE_LIMIT_PAUSE_MIN: self.robot_pause_min_spin.value() * 60,
+            SETTING_ROBOT_RATE_LIMIT_PAUSE_MAX: self.robot_pause_max_spin.value() * 60,
+            SETTING_ROBOT_RATE_LIMIT_WINDOW: self.robot_rate_limit_window_spin.value() * 60,
+            SETTING_ROBOT_RATE_LIMIT_THRESHOLD: self.robot_rate_limit_threshold_spin.value(),
             SETTING_REQUEST_TIMEOUT: self.request_timeout_spin.value()
         }
 
@@ -720,84 +819,122 @@ class ActivationDialog(QDialog):
         self.setWindowTitle("تفعيل البرنامج")
         self.setModal(True)
         self.setLayoutDirection(Qt.RightToLeft)
-        self.setMinimumWidth(480) 
+        self.setMinimumSize(820, 460)
         self.setObjectName("ActivationDialog")
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint) 
 
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(25, 25, 25, 25) 
-        main_layout.setSpacing(18) 
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(0)
 
-        header_frame = QFrame(self)
-        header_frame.setObjectName("ActivationHeaderFrame")
-        header_layout = QHBoxLayout(header_frame)
-        header_layout.setContentsMargins(0,0,0,0)
-        header_layout.setSpacing(15) 
+        card_frame = QFrame(self)
+        card_frame.setObjectName("ActivationCard")
+        card_layout = QHBoxLayout(card_frame)
+        card_layout.setContentsMargins(18, 18, 18, 18)
+        card_layout.setSpacing(18)
 
-        self.icon_label = QLabel(self)
-        key_icon_pixmap = QPixmap(self.style().standardIcon(QStyle.SP_MessageBoxInformation).pixmap(64, 64)) 
-        self.icon_label.setPixmap(key_icon_pixmap)
-        self.icon_label.setAlignment(Qt.AlignCenter)
-        header_layout.addWidget(self.icon_label)
+        left_panel = QFrame(self)
+        left_panel.setObjectName("ActivationLeftPanel")
+        left_layout = QVBoxLayout(left_panel)
+        left_layout.setContentsMargins(20, 20, 20, 20)
+        left_layout.setSpacing(12)
 
-        title_font = QFont("Tajawal Bold", 18) 
-        self.title_label = QLabel("تفعيل البرنامج", self)
-        self.title_label.setFont(title_font)
-        self.title_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter) 
+        self.left_icon_label = QLabel(self)
+        self.left_icon_label.setObjectName("ActivationLeftIcon")
+        self.left_icon_label.setPixmap(self.style().standardIcon(QStyle.SP_MessageBoxInformation).pixmap(110, 110))
+        self.left_icon_label.setAlignment(Qt.AlignCenter)
+        left_layout.addStretch(1)
+        left_layout.addWidget(self.left_icon_label)
+        left_layout.addStretch(1)
+
+        right_panel = QFrame(self)
+        right_panel.setObjectName("ActivationRightPanel")
+        right_layout = QVBoxLayout(right_panel)
+        right_layout.setContentsMargins(20, 20, 20, 20)
+        right_layout.setSpacing(12)
+
+        self.title_label = QLabel("التفعيل", self)
+        self.title_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.title_label.setObjectName("ActivationTitleLabel")
-        header_layout.addWidget(self.title_label, 1) 
-        
-        main_layout.addWidget(header_frame)
-        
-        self.instruction_label = QLabel("الرجاء إدخال كود التفعيل الخاص بك للمتابعة.", self)
-        self.instruction_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter) 
-        self.instruction_label.setWordWrap(True)
-        self.instruction_label.setObjectName("ActivationInstructionLabel")
-        main_layout.addWidget(self.instruction_label)
+        right_layout.addWidget(self.title_label)
+
+        input_frame = QFrame(self)
+        self.input_frame = input_frame
+        input_frame.setObjectName("ActivationInputFrame")
+        input_layout = QHBoxLayout(input_frame)
+        input_layout.setContentsMargins(12, 10, 12, 10)
+        input_layout.setSpacing(8)
 
         self.activation_code_input = QLineEdit(self)
-        self.activation_code_input.setPlaceholderText("أدخل كود التفعيل هنا")
+        self.activation_code_input.setPlaceholderText("أدخل رمز التفعيل")
         self.activation_code_input.setAlignment(Qt.AlignCenter)
-        self.activation_code_input.setMinimumHeight(40) 
+        self.activation_code_input.setMinimumHeight(50)
         self.activation_code_input.setObjectName("ActivationCodeInput")
-        shadow_effect = QGraphicsDropShadowEffect(self)
-        shadow_effect.setBlurRadius(10)
-        shadow_effect.setColor(QColor(0,0,0,80))
-        shadow_effect.setOffset(2,2)
-        self.activation_code_input.setGraphicsEffect(shadow_effect)
-        main_layout.addWidget(self.activation_code_input)
+        key_icon = QIcon(self.style().standardIcon(QStyle.SP_FileDialogDetailedView).pixmap(18, 18))
+        key_action = self.activation_code_input.addAction(key_icon, QLineEdit.LeadingPosition)
+        key_action.setEnabled(False)
+        self.activation_code_input.installEventFilter(self)
+        input_layout.addWidget(self.activation_code_input, 1)
+        right_layout.addWidget(input_frame)
+        self._apply_input_focus_glow(False)
+
+        helper_frame = QFrame(self)
+        helper_frame.setObjectName("ActivationHelperFrame")
+        helper_layout = QVBoxLayout(helper_frame)
+        helper_layout.setContentsMargins(14, 12, 14, 12)
+        helper_layout.setSpacing(10)
+
+        self.helper_icon = QLabel(self)
+        self.helper_icon.setObjectName("ActivationHelperIcon")
+        self.helper_icon.setPixmap(self.style().standardIcon(QStyle.SP_DialogApplyButton).pixmap(80, 80))
+        self.helper_icon.setAlignment(Qt.AlignCenter)
+        helper_layout.addWidget(self.helper_icon, 0, Qt.AlignCenter)
+
+        self.helper_label = QLabel("التفعيل آمن ومربوط بالجهاز", self)
+        self.helper_label.setWordWrap(True)
+        self.helper_label.setAlignment(Qt.AlignCenter)
+        self.helper_label.setObjectName("ActivationHelperLabel")
+        helper_layout.addWidget(self.helper_label, 0, Qt.AlignCenter)
+        right_layout.addWidget(helper_frame)
 
         self.status_message_area = QTextEdit(self)
         self.status_message_area.setReadOnly(True)
         self.status_message_area.setObjectName("ActivationStatusMessageArea")
-        self.status_message_area.setMinimumHeight(70) 
-        self.status_message_area.setMaximumHeight(130)
+        self.status_message_area.setMinimumHeight(52)
+        self.status_message_area.setMaximumHeight(56)
         self.status_message_area.setAlignment(Qt.AlignCenter)
-        self.status_message_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded) 
-        main_layout.addWidget(self.status_message_area)
-        
-        line = QFrame(self)
-        line.setFrameShape(QFrame.HLine)
-        line.setFrameShadow(QFrame.Sunken)
-        line.setObjectName("ActivationLineSeparator")
-        main_layout.addWidget(line)
+        self.status_message_area.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.status_message_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.status_message_area.setLineWrapMode(QTextEdit.NoWrap)
+        self.status_message_area.document().setMaximumBlockCount(1)
+        right_layout.addWidget(self.status_message_area)
 
         self.buttons_layout = QHBoxLayout()
-        self.buttons_layout.setSpacing(12) 
+        self.buttons_layout.setSpacing(12)
+        self.buttons_layout.addStretch(1)
 
         self.activate_button = QPushButton("تفعيل", self)
         self.activate_button.setIcon(self.style().standardIcon(QStyle.SP_DialogApplyButton))
         self.activate_button.setObjectName("ActivationActivateButton")
-        self.activate_button.setFixedHeight(40) 
+        self.activate_button.setFixedHeight(52)
+        button_shadow = QGraphicsDropShadowEffect(self)
+        button_shadow.setBlurRadius(18)
+        button_shadow.setColor(QColor(77, 121, 255, 140))
+        button_shadow.setOffset(0, 4)
+        self.activate_button.setGraphicsEffect(button_shadow)
         self.buttons_layout.addWidget(self.activate_button)
 
         self.cancel_button = QPushButton("إلغاء", self)
         self.cancel_button.setIcon(self.style().standardIcon(QStyle.SP_DialogCancelButton))
         self.cancel_button.setObjectName("ActivationCancelButton")
-        self.cancel_button.setFixedHeight(40)
+        self.cancel_button.setFixedHeight(48)
         self.buttons_layout.addWidget(self.cancel_button)
-        
-        main_layout.addLayout(self.buttons_layout)
+
+        right_layout.addLayout(self.buttons_layout)
+
+        card_layout.addWidget(left_panel, 4)
+        card_layout.addWidget(right_panel, 6)
+        main_layout.addWidget(card_frame)
 
         self.activate_button.clicked.connect(self._handle_activate_clicked)
         self.cancel_button.clicked.connect(self.reject)
@@ -807,83 +944,144 @@ class ActivationDialog(QDialog):
     def _apply_styles(self):
         self.setStyleSheet("""
             QDialog#ActivationDialog {
-                background-color: #2E3440; 
-                border-radius: 8px; 
+                background-color: #11151D;
             }
-            QFrame#ActivationHeaderFrame {
-                border-bottom: 1px solid #4C566A; 
-                padding-bottom: 12px;
-                margin-bottom: 8px;
+            QFrame#ActivationCard {
+                background-color: #1B212D;
+                border-radius: 20px;
+                border: 1px solid #2C3446;
+            }
+            QFrame#ActivationLeftPanel {
+                background: qlineargradient(
+                    x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #1A2B55, stop:1 #25408A
+                );
+                border-radius: 16px;
+                border: 1px solid rgba(255, 255, 255, 0.08);
+            }
+            QLabel#ActivationLeftIcon {
+                background-color: rgba(255, 255, 255, 0.08);
+                border-radius: 28px;
+                padding: 20px;
+            }
+            QFrame#ActivationRightPanel {
+                background-color: #1F2633;
+                border-radius: 16px;
+                border: 1px solid #2D3648;
             }
             QLabel#ActivationTitleLabel {
-                color: #ECEFF4; 
+                color: #F1F4FA;
+                font-size: 17pt;
                 font-family: "Tajawal Bold";
             }
-            QLabel#ActivationInstructionLabel {
-                color: #D8DEE9; 
-                font-size: 10pt;
-                font-family: "Tajawal Regular";
-                padding-bottom: 5px; 
+            QFrame#ActivationInputFrame {
+                background-color: #1B222F;
+                border: 1px solid #2F3B52;
+                border-radius: 16px;
+            }
+            QFrame#ActivationInputFrame[focused="true"] {
+                border: 1px solid #5B86FF;
+            }
+            QFrame#ActivationInputFrame:focus {
+                border: 1px solid #5B86FF;
             }
             QLineEdit#ActivationCodeInput {
-                font-size: 13pt; 
+                font-size: 14.5pt;
                 font-family: "Tajawal Medium";
-                background-color: #3B4252; 
-                color: #ECEFF4;
-                border: 1px solid #4C566A;
-                border-radius: 6px; 
-                padding: 10px; 
+                background-color: transparent;
+                color: #EEF2FF;
+                border: none;
+                padding: 8px 10px;
             }
             QLineEdit#ActivationCodeInput:focus {
-                border: 1px solid #88C0D0; 
-                background-color: #434C5E; 
+                color: #FFFFFF;
+            }
+            QFrame#ActivationHelperFrame {
+                background-color: #1A202D;
+                border: 1px solid #2B3345;
+                border-radius: 16px;
+            }
+            QLabel#ActivationHelperIcon {
+                background-color: rgba(93, 131, 255, 0.18);
+                border-radius: 22px;
+                padding: 10px;
+            }
+            QLabel#ActivationHelperLabel {
+                color: #CBD4E8;
+                font-size: 10.5pt;
+                font-family: "Tajawal Medium";
             }
             QTextEdit#ActivationStatusMessageArea {
                 font-family: "Tajawal Regular";
-                font-size: 10pt;
-                border: 1px solid #4C566A;
-                border-radius: 6px;
-                background-color: #3B4252;
-                color: #D8DEE9;
+                font-size: 10.5pt;
+                border: 1px solid #2A3447;
+                border-radius: 16px;
+                background-color: #171D29;
+                color: #C3CDDF;
                 padding: 10px;
             }
-            QFrame#ActivationLineSeparator {
-                background-color: #4C566A;
-                max-height: 1px;
-            }
             QPushButton#ActivationActivateButton {
-                background-color: #A3BE8C; 
-                color: #2E3440; 
+                background-color: qlineargradient(
+                    x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #4D79FF, stop:1 #6AA6FF
+                );
+                color: #F7F9FF;
                 font-family: "Tajawal Bold";
-                padding: 10px 22px; 
-                border-radius: 6px;
-                border: none; 
-            }
-            QPushButton#ActivationActivateButton:hover {
-                background-color: #B4D0A0; 
-            }
-            QPushButton#ActivationActivateButton:pressed {
-                background-color: #90AB7C; 
-            }
-            QPushButton#ActivationActivateButton:disabled {
-                background-color: #4C566A;
-                color: #6c788c;
-            }
-            QPushButton#ActivationCancelButton {
-                background-color: #BF616A; 
-                color: #ECEFF4; 
-                font-family: "Tajawal Bold";
-                padding: 10px 22px;
-                border-radius: 6px;
+                padding: 12px 32px;
+                border-radius: 16px;
                 border: none;
             }
+            QPushButton#ActivationActivateButton:hover {
+                background-color: qlineargradient(
+                    x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #5B86FF, stop:1 #7AB4FF
+                );
+                border: 1px solid rgba(122, 180, 255, 0.9);
+            }
+            QPushButton#ActivationActivateButton:pressed {
+                background-color: qlineargradient(
+                    x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #3C67E5, stop:1 #5C92F0
+                );
+            }
+            QPushButton#ActivationActivateButton:disabled {
+                background-color: #2A3447;
+                color: #6D7892;
+            }
+            QPushButton#ActivationCancelButton {
+                background-color: #252C3B;
+                color: #E0E6F4;
+                font-family: "Tajawal Medium";
+                padding: 10px 24px;
+                border-radius: 14px;
+                border: 1px solid #343F55;
+            }
             QPushButton#ActivationCancelButton:hover {
-                background-color: #D08770; 
+                background-color: #2F384B;
             }
             QPushButton#ActivationCancelButton:pressed {
-                background-color: #AB545C; 
+                background-color: #202636;
             }
         """)
+
+    def _apply_input_focus_glow(self, focused):
+        if not hasattr(self, "_input_shadow"):
+            self._input_shadow = QGraphicsDropShadowEffect(self)
+            self.input_frame.setGraphicsEffect(self._input_shadow)
+        self._input_shadow.setBlurRadius(18 if focused else 8)
+        self._input_shadow.setColor(QColor(91, 134, 255, 120 if focused else 30))
+        self._input_shadow.setOffset(0, 0)
+        self.input_frame.setProperty("focused", focused)
+        self.input_frame.style().unpolish(self.input_frame)
+        self.input_frame.style().polish(self.input_frame)
+
+    def eventFilter(self, obj, event):
+        if obj is self.activation_code_input:
+            if event.type() == QEvent.FocusIn:
+                self._apply_input_focus_glow(True)
+            elif event.type() == QEvent.FocusOut:
+                self._apply_input_focus_glow(False)
+        return super().eventFilter(obj, event)
 
     def _handle_activate_clicked(self):
         self.activation_attempted.emit(self.get_activation_code())
@@ -892,7 +1090,10 @@ class ActivationDialog(QDialog):
         return self.activation_code_input.text().strip().upper()
 
     def show_status_message(self, message, is_error=False, is_warning=False, is_success=False, is_waiting=False):
-        display_message = message
+        lines = (message or "").splitlines()
+        display_message = lines[0].strip() if lines else ""
+        if len(display_message) > 40:
+            display_message = f"{display_message[:37]}..."
         
         style_sheet_base = "font-family: 'Tajawal Regular'; font-weight: normal; padding: 8px;" 
         text_color = "#D8DEE9" 
@@ -902,9 +1103,11 @@ class ActivationDialog(QDialog):
             text_color = "#EBCB8B" 
             self.activate_button.setEnabled(False)
             self.activation_code_input.setEnabled(False)
+            self.activate_button.setText("جارٍ التحقق...")
         else:
             self.activate_button.setEnabled(True)
             self.activation_code_input.setEnabled(True)
+            self.activate_button.setText("تفعيل")
 
         if is_error:
             display_message = f"❌ {message}"
@@ -921,6 +1124,16 @@ class ActivationDialog(QDialog):
         
         self.status_message_area.setText(display_message)
         self.status_message_area.setStyleSheet(f"color: {text_color}; {style_sheet_base}")
+        if not hasattr(self, "_status_fade_effect"):
+            self._status_fade_effect = QGraphicsOpacityEffect(self.status_message_area)
+            self.status_message_area.setGraphicsEffect(self._status_fade_effect)
+        self._status_fade_effect.setOpacity(0.0)
+        self._status_animation = QPropertyAnimation(self._status_fade_effect, b"opacity", self)
+        self._status_animation.setDuration(220)
+        self._status_animation.setStartValue(0.0)
+        self._status_animation.setEndValue(1.0)
+        self._status_animation.setEasingCurve(QEasingCurve.OutCubic)
+        self._status_animation.start()
         QApplication.processEvents() 
 
 class MessagesDialog(QDialog): # فئة جديدة لعرض الرسائل

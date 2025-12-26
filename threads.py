@@ -9,15 +9,35 @@ from PyQt5.QtCore import QThread, pyqtSignal, QStandardPaths
 from api_client import AnemAPIClient 
 from member import Member 
 from utils import get_icon_name_for_status 
+from robot import ResultType, RobotController
 from config import (
     SETTING_MIN_MEMBER_DELAY, SETTING_MAX_MEMBER_DELAY,
     SETTING_MONITORING_INTERVAL, SETTING_BACKOFF_429,
-    SETTING_BACKOFF_GENERAL, SETTING_REQUEST_TIMEOUT, DEFAULT_SETTINGS
+    SETTING_BACKOFF_GENERAL, SETTING_REQUEST_TIMEOUT, DEFAULT_SETTINGS,
+    SETTING_ROBOT_ENABLED,
 )
 
 logger = logging.getLogger(__name__)
 
-SHORT_SKIP_DELAY_SECONDS = 0.1 
+SHORT_SKIP_DELAY_SECONDS = 0.1
+
+
+def _extract_pre_inscription_state(data_dict, log_context="validate"):
+    raw_pre_inscription_id = data_dict.get("preInscriptionId") if isinstance(data_dict, dict) else None
+    have_pre_flag = bool(isinstance(data_dict, dict) and data_dict.get("havePreInscription", False))
+
+    normalized_id = raw_pre_inscription_id.strip() if isinstance(raw_pre_inscription_id, str) else raw_pre_inscription_id
+    invalid_placeholders = {"", None, "0", "00000000-0000-0000-0000-000000000000", "null", "NULL"}
+    has_valid_id = normalized_id not in invalid_placeholders
+
+    has_actual_pre = bool(have_pre_flag and has_valid_id)
+    if have_pre_flag and not has_valid_id:
+        logger.warning(
+            "API returned havePreInscription=true without a valid preInscriptionId "
+            f"during {log_context}. raw_pre_inscription_id={raw_pre_inscription_id!r}"
+        )
+
+    return normalized_id if has_valid_id else None, has_actual_pre
 
 def _translate_api_error(error_string, operation_name="العملية"):
     if not error_string:
@@ -44,14 +64,17 @@ def _translate_api_error(error_string, operation_name="العملية"):
         return f"تم استلام استجابة غير صالحة (ليست JSON) من الخادم أثناء {operation_name}."
     elif "eligible:false" in error_lower or "نعتذر منكم" in error_string: 
         if "نعتذر منكم! لا يمكنكم حجز موعد" in error_string:
-            return error_string
-        if operation_name == "حجز الموعد" and "\"Eligible\":false" in error_string and "\"serviceUp\":true" in error_string :
-             return "نعتذر منكم! لا يمكنكم حجز موعد للاستفادة من منحة البطالة لعدم استيفائك لأحد شروط الأهلية اللازمة."
-        return f"المستخدم غير مؤهل لـ {operation_name} حسب شروط المنصة."
-    
+            return "غير مؤهل للحجز."
+        return str(error_string)
+    if operation_name == "حجز الموعد" and "\"eligible\":false" in error_lower and "\"serviceup\":true" in error_lower:
+        return "نعتذر منكم! لا يمكنكم حجز موعد للاستفادة من منحة البطالة لعدم استيفائك لأحد شروط الأهلية اللازمة."
+
     max_len = 70
-    snippet = error_string[:max_len] + "..." if len(error_string) > max_len else error_string
+    snippet = str(error_string)
+    snippet = snippet[:max_len] + "..." if len(snippet) > max_len else snippet
     return f"فشل في {operation_name}: {snippet}"
+
+
 
 
 class FetchInitialInfoThread(QThread):
@@ -121,13 +144,14 @@ class FetchInitialInfoThread(QThread):
                     logger.info(f"العضو {self.member.nin} ( {self.member.get_full_name_ar()} ) مستفيد حاليًا من المنحة، تاريخ البدء: {date_debut}.")
                 else:
                     is_eligible_from_validate = data_val.get("eligible", False)
-                    self.member.has_actual_pre_inscription = data_val.get("havePreInscription", False)
+                    normalized_pre_id, has_actual_pre = _extract_pre_inscription_state(data_val, log_context="initial validate")
+                    self.member.pre_inscription_id = normalized_pre_id
+                    self.member.has_actual_pre_inscription = has_actual_pre
                     self.member.already_has_rdv = data_val.get("haveRendezVous", False)
                     valid_input = data_val.get("validInput", True)
-                    self.member.pre_inscription_id = data_val.get("preInscriptionId")
                     self.member.demandeur_id = data_val.get("demandeurId")
                     self.member.structure_id = data_val.get("structureId")
-                    self.member.rdv_id = data_val.get("rendezVousId") 
+                    self.member.rdv_id = data_val.get("rendezVousId")
                     
                     # Set rdv_source if RDV is discovered here
                     if self.member.already_has_rdv:
@@ -230,6 +254,8 @@ class MonitoringThread(QThread):
     global_log_signal = pyqtSignal(str, bool, object, int) 
     member_being_processed_signal = pyqtSignal(int, bool)    
     countdown_update_signal = pyqtSignal(str) 
+    robot_status_signal = pyqtSignal(str, str, str, int)
+    robot_alert_signal = pyqtSignal(str)
 
     SITE_CHECK_INTERVAL_SECONDS = 60 
     MAX_CONSECUTIVE_MEMBER_FAILURES = 5 
@@ -246,17 +272,29 @@ class MonitoringThread(QThread):
         self.current_member_index_to_process = 0 
         self.consecutive_network_error_trigger_count = 0 
         self.initial_scan_completed = False 
+        self._last_excluded_log_at = 0
 
     def _apply_settings(self):
         self.interval_ms = self.settings.get(SETTING_MONITORING_INTERVAL, DEFAULT_SETTINGS[SETTING_MONITORING_INTERVAL]) * 60 * 1000
         self.min_member_delay = self.settings.get(SETTING_MIN_MEMBER_DELAY, DEFAULT_SETTINGS[SETTING_MIN_MEMBER_DELAY])
         self.max_member_delay = self.settings.get(SETTING_MAX_MEMBER_DELAY, DEFAULT_SETTINGS[SETTING_MAX_MEMBER_DELAY])
+        self.robot_enabled = self.settings.get(SETTING_ROBOT_ENABLED, True)
         
         self.api_client = AnemAPIClient(
             initial_backoff_general=self.settings.get(SETTING_BACKOFF_GENERAL, DEFAULT_SETTINGS[SETTING_BACKOFF_GENERAL]),
             initial_backoff_429=self.settings.get(SETTING_BACKOFF_429, DEFAULT_SETTINGS[SETTING_BACKOFF_429]),
             request_timeout=self.settings.get(SETTING_REQUEST_TIMEOUT, DEFAULT_SETTINGS[SETTING_REQUEST_TIMEOUT])
         )
+        robot_settings = {
+            "base_global_interval_sec": max(6.0, float(self.settings.get("robot_base_interval_sec", 8))),
+            "burst_duration_min": int(self.settings.get("robot_burst_duration_min", 25)),
+            "freeze_has_rdv_days": int(self.settings.get("robot_freeze_has_rdv_days", 7)),
+            "rate_limit_pause_min_sec": int(self.settings.get("robot_rate_limit_pause_min_sec", 45 * 60)),
+            "rate_limit_pause_max_sec": int(self.settings.get("robot_rate_limit_pause_max_sec", 120 * 60)),
+            "rate_limit_window_sec": int(self.settings.get("robot_rate_limit_window_sec", 15 * 60)),
+            "rate_limit_threshold": int(self.settings.get("robot_rate_limit_threshold", 2)),
+        }
+        self.robot = RobotController(self.api_client, robot_settings)
         logger.info(f"MonitoringThread settings applied: Interval={self.interval_ms/60000:.1f}min, MemberDelay=[{self.min_member_delay}-{self.max_member_delay}]s")
 
     def _emit_global_log(self, message, is_general=True, member_obj=None, member_idx=-1):
@@ -286,10 +324,93 @@ class MonitoringThread(QThread):
 
 
     def run(self):
-        statuses_to_completely_skip_monitoring = ["مستفيد حاليًا من المنحة"]
+        statuses_to_completely_skip_monitoring = [
+            "مستفيد حاليًا من المنحة",
+            "مستفيد حاليا من المنحة",
+            "مكتمل",
+            "غير مؤهل للحجز",
+            "غير مؤهل مبدئيًا",
+            "بيانات الإدخال خاطئة",
+            "لديه موعد مسبق",
+        ]
         statuses_for_pdf_check_only = ["مكتمل", "لديه موعد مسبق"] 
+        self._emit_robot_status()
+        mode_logged = False
         
         while self.is_running:
+            if not mode_logged:
+                mode_logged = True
+                if self.robot_enabled:
+                    logger.info("Robot mode ENABLED")
+                    self._emit_global_log("Robot mode ENABLED")
+                else:
+                    logger.info("Legacy mode ENABLED")
+                    self._emit_global_log("Legacy mode ENABLED")
+
+            if self.robot_enabled and self.robot.scheduler.is_paused():
+                pause_until = self.robot.scheduler.pause_until
+                pause_text = time.strftime("%H:%M:%S", time.localtime(pause_until))
+                logger.warning(f"Circuit breaker active until {pause_text}")
+                self._emit_global_log(f"Circuit breaker active until {pause_text}")
+                self._emit_robot_status()
+                self._wait_with_countdown(int(pause_until - time.time()), "استئناف الروبوت بعد: ")
+                if not self.is_running:
+                    break
+                continue
+
+            if self.robot_enabled:
+                eligible_members = []
+                excluded_members = 0
+                cooling_members = 0
+                now_ts = time.time()
+                for member_obj in list(self.members_list_ref):
+                    member_key = self._get_member_key(member_obj)
+                    state = self.robot.scheduler.state_for(member_key)
+                    if state.monitoring_mode != "ACTIVE":
+                        excluded_members += 1
+                        continue
+                    if now_ts < state.next_allowed_check_at:
+                        cooling_members += 1
+                        continue
+                    eligible_members.append(member_obj)
+
+                if not eligible_members:
+                    if now_ts - self._last_excluded_log_at > 600:
+                        self._last_excluded_log_at = now_ts
+                        earliest_active = min(
+                            (
+                                self.robot.scheduler.state_for(self._get_member_key(m)).next_allowed_check_at
+                                for m in self.members_list_ref
+                                if self.robot.scheduler.state_for(self._get_member_key(m)).monitoring_mode == "ACTIVE"
+                                and self.robot.scheduler.state_for(self._get_member_key(m)).next_allowed_check_at
+                            ),
+                            default=0,
+                        )
+                        earliest_dt = (
+                            time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(earliest_active))
+                            if earliest_active
+                            else "--"
+                        )
+                        self._emit_global_log(
+                            f"ملخص الروبوت: eligible=0, cooling={cooling_members}, excluded={excluded_members}, earliest_next={earliest_dt}",
+                            is_general=True,
+                        )
+                    idle_wait = self.robot.next_wait_seconds() or int(random.uniform(30 * 60, 120 * 60))
+                    self._wait_with_countdown(idle_wait, "استئناف الروبوت بعد: ")
+                    if not self.is_running:
+                        break
+                    continue
+                if now_ts - self._last_excluded_log_at > 600:
+                    self._last_excluded_log_at = now_ts
+                    earliest_active = min(
+                        (self.robot.scheduler.state_for(self._get_member_key(m)).next_allowed_check_at for m in eligible_members),
+                        default=0,
+                    )
+                    earliest_dt = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(earliest_active)) if earliest_active else "--"
+                    self._emit_global_log(
+                        f"ملخص الروبوت: eligible={len(eligible_members)}, cooling={cooling_members}, excluded={excluded_members}, earliest_next={earliest_dt}",
+                        is_general=True,
+                    )
             if self.is_connection_lost_mode:
                 self._emit_global_log(f"الاتصال بالخادم مفقود. جاري فحص توفر الموقع...")
                 site_available, site_check_error = self.api_client.check_main_site_availability() 
@@ -315,6 +436,8 @@ class MonitoringThread(QThread):
             if self.is_running and not self.initial_scan_completed and not self.is_connection_lost_mode:
                 logger.info("بدء الفحص الأولي لجميع الأعضاء عند بدء المراقبة...")
                 self._emit_global_log("جاري الفحص الأولي لجميع الأعضاء...")
+                self.robot.start_round()
+                self._log_robot_round_decisions("initial")
                 
                 initial_scan_members_list = list(self.members_list_ref) 
 
@@ -336,6 +459,11 @@ class MonitoringThread(QThread):
 
                         member_display_name = self._get_member_display_name_with_index_from_thread(member_to_process, initial_scan_idx)
 
+                        now_ts = time.time()
+                        if self.robot_enabled and not self.robot.can_process(self._get_member_key(member_to_process)):
+                            self._scheduler_skip_member(initial_scan_idx, member_to_process)
+                            continue
+
                         if member_to_process.is_processing:
                             logger.debug(f"الفحص الأولي: تجاوز العضو {member_display_name} لأنه قيد المعالجة.")
                             continue
@@ -352,6 +480,12 @@ class MonitoringThread(QThread):
                             logger.info(f"الفحص الأولي: تجاوز العضو {member_display_name} لأنه في حالة: {member_to_process.status}.")
                             self.update_member_gui_signal.emit(initial_scan_idx, member_to_process.status, member_to_process.last_activity_detail, get_icon_name_for_status(member_to_process.status))
                             self.member_being_processed_signal.emit(initial_scan_idx, False)
+                            if self.robot_enabled:
+                                skip_result = self.robot.classifier.classify(
+                                    member_to_process.status,
+                                    member_to_process.last_activity_detail,
+                                )
+                                self._record_robot_result(member_to_process, skip_result)
                             if self.is_running: time.sleep(SHORT_SKIP_DELAY_SECONDS)
                             continue
 
@@ -410,6 +544,17 @@ class MonitoringThread(QThread):
                                 member_to_process.consecutive_failures = 0
                                 if not member_had_api_error_this_cycle : self.consecutive_network_error_trigger_count = 0
 
+                            result_type = self.robot.classifier.classify(
+                                member_to_process.status,
+                                member_to_process.last_activity_detail,
+                                data=getattr(member_to_process, "last_available_dates_data", None),
+                            )
+                            if self.robot_enabled:
+                                self._record_robot_result(member_to_process, result_type)
+                                if self.robot.scheduler.is_paused():
+                                    logger.warning("CIRCUIT_BREAKER active due to 429")
+                                    break
+
 
                         except Exception as e:
                             if not self.is_running: break
@@ -419,6 +564,8 @@ class MonitoringThread(QThread):
                             member_to_process.consecutive_failures +=1
                             self.consecutive_network_error_trigger_count +=1
                             self.update_member_gui_signal.emit(initial_scan_idx, member_to_process.status, member_to_process.last_activity_detail, "SP_MessageBoxCritical")
+                            if self.robot_enabled:
+                                self._record_robot_result(member_to_process, ResultType.NETWORK_ERROR)
                         finally:
                             if self.is_running:
                                 self.member_being_processed_signal.emit(initial_scan_idx, False)
@@ -431,12 +578,13 @@ class MonitoringThread(QThread):
                             self.is_connection_lost_mode = True
                             break 
 
-                        member_delay = random.uniform(self.min_member_delay, self.max_member_delay)
-                        logger.info(f"الفحص الأولي: تأخير {member_delay:.2f} ثانية قبل العضو التالي.")
-                        self._wait_with_countdown(int(member_delay)) 
-                        if not self.is_running: break
-                        if self.is_running:
-                            time.sleep(member_delay - int(member_delay))
+                        if not self.robot_enabled:
+                            member_delay = random.uniform(self.min_member_delay, self.max_member_delay)
+                            logger.info(f"الفحص الأولي: تأخير {member_delay:.2f} ثانية قبل العضو التالي.")
+                            self._wait_with_countdown(int(member_delay)) 
+                            if not self.is_running: break
+                            if self.is_running:
+                                time.sleep(member_delay - int(member_delay))
                     
                     if self.is_connection_lost_mode: 
                         continue 
@@ -459,6 +607,8 @@ class MonitoringThread(QThread):
 
             logger.info(f"بدء دورة مراقبة دورية... (من الفهرس {self.current_member_index_to_process}) عدد الأعضاء الكلي: {len(current_members_snapshot_indices)}")
             self._emit_global_log(f"بدء دورة مراقبة دورية... ({time.strftime('%H:%M:%S')})")
+            self.robot.start_round()
+            self._log_robot_round_decisions("periodic")
 
             processed_in_this_cycle = False 
 
@@ -480,6 +630,10 @@ class MonitoringThread(QThread):
                 member_to_process = self.members_list_ref[main_list_idx]
                 member_display_name_periodic = self._get_member_display_name_with_index_from_thread(member_to_process, main_list_idx)
 
+                now_ts = time.time()
+                if self.robot_enabled and not self.robot.can_process(self._get_member_key(member_to_process)):
+                    self._scheduler_skip_member(main_list_idx, member_to_process)
+                    continue
 
                 if member_to_process.is_processing: 
                     logger.debug(f"المراقبة الدورية: تجاوز العضو {member_display_name_periodic} لأنه قيد المعالجة.")
@@ -497,6 +651,12 @@ class MonitoringThread(QThread):
                     logger.info(f"المراقبة الدورية: تجاوز العضو {member_display_name_periodic} لأنه في حالة: {member_to_process.status}.")
                     self.update_member_gui_signal.emit(main_list_idx, member_to_process.status, member_to_process.last_activity_detail, get_icon_name_for_status(member_to_process.status))
                     self.member_being_processed_signal.emit(main_list_idx, False) 
+                    if self.robot_enabled:
+                        skip_result = self.robot.classifier.classify(
+                            member_to_process.status,
+                            member_to_process.last_activity_detail,
+                        )
+                        self._record_robot_result(member_to_process, skip_result)
                     if self.is_running: time.sleep(SHORT_SKIP_DELAY_SECONDS)
                     self.current_member_index_to_process = (main_list_idx + 1) % len(self.members_list_ref) if self.members_list_ref else 0
                     continue 
@@ -559,6 +719,17 @@ class MonitoringThread(QThread):
                         member_to_process.consecutive_failures = 0
                         self.consecutive_network_error_trigger_count = 0 
 
+                    result_type = self.robot.classifier.classify(
+                        member_to_process.status,
+                        member_to_process.last_activity_detail,
+                        data=getattr(member_to_process, "last_available_dates_data", None),
+                    )
+                    if self.robot_enabled:
+                        self._record_robot_result(member_to_process, result_type)
+                        if self.robot.scheduler.is_paused():
+                            logger.warning("CIRCUIT_BREAKER active due to 429")
+                            break
+
                 except Exception as e:
                     if not self.is_running: break
                     logger.exception(f"المراقبة الدورية: خطأ غير متوقع للعضو {member_display_name_periodic}: {e}")
@@ -567,6 +738,14 @@ class MonitoringThread(QThread):
                     member_to_process.consecutive_failures +=1 
                     self.consecutive_network_error_trigger_count +=1 
                     self.update_member_gui_signal.emit(main_list_idx, member_to_process.status, member_to_process.last_activity_detail, "SP_MessageBoxCritical")
+                    if self.robot_enabled:
+                        self._record_robot_result(member_to_process, ResultType.NETWORK_ERROR)
+                        if self.robot.scheduler.is_paused():
+                            logger.warning("CIRCUIT_BREAKER active due to 429")
+                            break
+                        if self.robot.scheduler.is_paused():
+                            logger.warning("CIRCUIT_BREAKER active due to 429")
+                            break
                 finally:
                     if self.is_running:
                         self.member_being_processed_signal.emit(main_list_idx, False) 
@@ -580,12 +759,13 @@ class MonitoringThread(QThread):
                     self.is_connection_lost_mode = True
                     break 
 
-                member_delay = random.uniform(self.min_member_delay, self.max_member_delay)
-                logger.info(f"المراقبة الدورية: تأخير {member_delay:.2f} ثانية قبل العضو التالي.")
-                self._wait_with_countdown(int(member_delay)) 
-                if not self.is_running: break
-                if self.is_running: 
-                    time.sleep(member_delay - int(member_delay))
+                if not self.robot_enabled:
+                    member_delay = random.uniform(self.min_member_delay, self.max_member_delay)
+                    logger.info(f"المراقبة الدورية: تأخير {member_delay:.2f} ثانية قبل العضو التالي.")
+                    self._wait_with_countdown(int(member_delay)) 
+                    if not self.is_running: break
+                    if self.is_running: 
+                        time.sleep(member_delay - int(member_delay))
 
                 self.current_member_index_to_process = (main_list_idx + 1) % len(self.members_list_ref) if self.members_list_ref else 0
 
@@ -601,7 +781,13 @@ class MonitoringThread(QThread):
                 logger.info(f"المراقبة الدورية: لم يتم فحص أي أعضاء. الانتظار للدورة القادمة.")
                 self._emit_global_log("المراقبة الدورية: لم يتم فحص أي أعضاء مؤهلين. الانتظار...")
             
-            self._wait_with_countdown(int(self.interval_ms / 1000), "الدورة التالية بعد: ")
+            next_wait = self.robot.next_wait_seconds() if self.robot_enabled else 0
+            if next_wait <= 0:
+                next_wait = int(self.interval_ms / 1000)
+            if self.robot_enabled:
+                resume_at = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() + next_wait))
+                logger.info(f"ROBOT_SLEEP until {resume_at} (reason: round complete)")
+            self._wait_with_countdown(next_wait, "الدورة التالية بعد: ")
             if not self.is_running: break
         
         logger.info("خيط المراقبة يتوقف.")
@@ -617,12 +803,107 @@ class MonitoringThread(QThread):
         if self.is_running: 
             self.update_member_gui_signal.emit(main_list_idx, member_obj_being_updated.status, member_obj_being_updated.last_activity_detail, icon_name)
 
+    def _get_member_key(self, member_obj):
+        return member_obj.nin or member_obj.wassit_no or str(id(member_obj))
+
+    def _scheduler_skip_member(self, main_list_idx, member_obj):
+        now_ts = time.time()
+        member_key = self._get_member_key(member_obj)
+        wait_seconds = self.robot.scheduler.state_for(member_key).next_allowed_check_at - now_ts
+        wait_minutes = max(1, int(wait_seconds / 60)) if wait_seconds else 1
+        detail_text = f"تبريد {wait_minutes} د"
+        state = self.robot.scheduler.state_for(member_key)
+        if now_ts - state.last_ui_update_at < 600 or state.monitoring_mode != "ACTIVE":
+            return
+        state.last_ui_update_at = now_ts
+        self._update_member_and_emit(
+            main_list_idx,
+            member_obj,
+            member_obj.status,
+            detail_text,
+            get_icon_name_for_status(member_obj.status)
+        )
+
+    def _log_robot_round_decisions(self, round_label):
+        if not self.robot_enabled:
+            return
+        now_ts = time.time()
+        decisions = []
+        for idx, member_obj in enumerate(list(self.members_list_ref)):
+            member_key = self._get_member_key(member_obj)
+            state = self.robot.scheduler.state_for(member_key)
+            next_allowed = state.next_allowed_check_at
+            if state.monitoring_mode != "ACTIVE":
+                reason = f"excluded:{state.monitoring_mode}"
+            elif self.robot.scheduler.is_paused(now_ts):
+                reason = "paused"
+            elif state.last_round_processed == self.robot.scheduler.round_id:
+                reason = "already_processed"
+            elif now_ts < next_allowed:
+                reason = "cooldown"
+            elif not self.robot.scheduler.rate_limiter.allow(now_ts):
+                reason = "global_rate_limit"
+            else:
+                reason = "eligible"
+            decisions.append(
+                f"{self._get_member_display_name_with_index_from_thread(member_obj, idx)}"
+                f" -> {reason} (next={time.strftime('%H:%M:%S', time.localtime(next_allowed)) if next_allowed else '--'})"
+            )
+        if decisions:
+            logger.debug(f"ROBOT_ROUND[{round_label}] decisions: " + " | ".join(decisions))
+
+    def _emit_robot_status(self):
+        if not self.robot_enabled:
+            self.robot_status_signal.emit("NORMAL", "-", "الروبوت متوقف", 0)
+            return
+        self.robot.update_mode()
+        next_check_ts = self.robot.scheduler.rate_limiter.next_allowed_at
+        next_check_text = time.strftime("%H:%M:%S", time.localtime(next_check_ts)) if next_check_ts else "-"
+        last_alert = self.robot.last_alert()
+        self.robot_status_signal.emit(self.robot.scheduler.mode, next_check_text, last_alert, self.robot.round_status())
+        excluded = self.robot.scheduler.excluded_summary()
+        excluded_total = excluded.get("DISABLED", 0) + excluded.get("SKIP_LONG", 0)
+        now_ts = time.time()
+        if excluded_total and now_ts - self._last_excluded_log_at > 600:
+            self._last_excluded_log_at = now_ts
+            self._emit_global_log(
+                f"تم استبعاد {excluded_total} أعضاء (مكتمل/مستفيد/غير مؤهل).",
+                is_general=True,
+            )
+
+    def _record_robot_result(self, member_obj, result_type):
+        member_key = self._get_member_key(member_obj)
+        cooldown_seconds, mode = self.robot.record_result(
+            member_key,
+            result_type,
+            detail=(member_obj.last_activity_detail or "")[:60],
+        )
+        explanation = self.robot.explain_result(result_type, cooldown_seconds)
+        state = self.robot.scheduler.state_for(member_key)
+        if state.monitoring_mode != "ACTIVE":
+            excluded_reason = "مستبعد من المراقبة"
+            if result_type == ResultType.COMPLETED:
+                excluded_reason = "مستبعد: مكتمل"
+            elif result_type == ResultType.BENEFICIARY:
+                excluded_reason = "مستبعد: مستفيد"
+            elif result_type == ResultType.INELIGIBLE:
+                excluded_reason = "مستبعد: غير مؤهل"
+            elif result_type == ResultType.HAS_RDV:
+                excluded_reason = "مستبعد: لديه موعد"
+            member_obj.set_activity_detail(excluded_reason, is_error=False)
+        if result_type in [ResultType.RATE_LIMIT, ResultType.ERROR_RETRYABLE, ResultType.HAS_DATES, ResultType.PROTECTED_STEP, ResultType.SERVER_ERROR]:
+            self.robot_alert_signal.emit(explanation)
+        if result_type == ResultType.PROTECTED_STEP:
+            self._emit_global_log("تم اكتشاف خطوة محمية. يتطلب التدخل اليدوي.", is_general=True)
+            self.is_running = False
+        self._emit_robot_status()
+
     def process_validation(self, main_list_idx, member_obj): 
         if not self.is_running: return False, False
         operation_name = "التحقق من البيانات (دوري)"
         member_display_name = self._get_member_display_name_with_index_from_thread(member_obj, main_list_idx)
         self._update_member_and_emit(main_list_idx, member_obj, "جاري التحقق (دورة)...", f"إعادة التحقق للعضو {member_display_name}", get_icon_name_for_status("جاري التحقق (دورة)..."))
-        data, error = self.api_client.validate_candidate(member_obj.wassit_no, member_obj.nin)
+        data, error = self.robot.client.validate_candidate(member_obj.wassit_no, member_obj.nin)
         if not self.is_running: return False, False
         
         new_status = member_obj.status 
@@ -659,10 +940,11 @@ class MonitoringThread(QThread):
                 self._emit_global_log(f"مستفيد حاليًا.", is_general=False, member_obj=member_obj, member_idx=main_list_idx)
                 validation_can_progress = False 
             else: 
-                member_obj.has_actual_pre_inscription = data.get("havePreInscription", False)
+                normalized_pre_id, has_actual_pre = _extract_pre_inscription_state(data, log_context="monitoring validate")
+                member_obj.pre_inscription_id = normalized_pre_id
+                member_obj.has_actual_pre_inscription = has_actual_pre
                 member_obj.already_has_rdv = data.get("haveRendezVous", False)
                 valid_input = data.get("validInput", True)
-                member_obj.pre_inscription_id = data.get("preInscriptionId")
                 member_obj.demandeur_id = data.get("demandeurId")
                 member_obj.structure_id = data.get("structureId")
                 member_obj.rdv_id = data.get("rendezVousId") 
@@ -730,7 +1012,7 @@ class MonitoringThread(QThread):
             return False, False 
         
         self._update_member_and_emit(main_list_idx, member_obj, "جاري جلب الاسم...", f"محاولة جلب الاسم واللقب للعضو {member_display_name}", get_icon_name_for_status("جاري جلب الاسم..."))
-        data, error = self.api_client.get_pre_inscription_info(member_obj.pre_inscription_id)
+        data, error = self.robot.client.get_preinscription(member_obj.pre_inscription_id)
         if not self.is_running: return False, False
         
         new_status = member_obj.status 
@@ -793,7 +1075,8 @@ class MonitoringThread(QThread):
         
         self._update_member_and_emit(main_list_idx, member_obj, "جاري البحث عن مواعيد...", f"البحث عن مواعيد للعضو {member_display_name}", get_icon_name_for_status("جاري البحث عن مواعيد..."))
         self._emit_global_log(f"جاري البحث عن مواعيد...", is_general=False, member_obj=member_obj, member_idx=main_list_idx)
-        data, error = self.api_client.get_available_dates(member_obj.structure_id, member_obj.pre_inscription_id)
+        data, error = self.robot.client.get_available_dates(member_obj.structure_id, member_obj.pre_inscription_id)
+        member_obj.last_available_dates_data = data if isinstance(data, dict) else None
         if not self.is_running: return False, False
         
         new_status = member_obj.status
@@ -832,9 +1115,9 @@ class MonitoringThread(QThread):
                     return False, False 
                 
                 if not self.is_running: return False, api_error_occurred_this_stage 
-                book_data, book_error = self.api_client.create_rendezvous(
-                    member_obj.pre_inscription_id, member_obj.ccp, member_obj.nom_fr, member_obj.prenom_fr,
-                    formatted_date, member_obj.demandeur_id
+                book_data, book_error = self.robot.client.create_rendezvous(
+                    member_obj.pre_inscription_id, member_obj.demandeur_id, formatted_date,
+                    member_obj.ccp, member_obj.nom_fr, member_obj.prenom_fr
                 )
                 if not self.is_running: return False, api_error_occurred_this_stage 
 
@@ -935,13 +1218,24 @@ class MonitoringThread(QThread):
         if api_err:
             error_msg_for_toast = _translate_api_error(api_err, operation_name)
             self._emit_global_log(f"فشل تحميل شهادة {filename_suffix_base}: {error_msg_for_toast}", is_general=False, member_obj=member_obj, member_idx=main_list_idx)
-        elif response_data and (isinstance(response_data, str) or (isinstance(response_data, dict) and "base64Pdf" in response_data)):
-            pdf_b64 = response_data if isinstance(response_data, str) else response_data.get("base64Pdf")
+        elif response_data and (isinstance(response_data, str) or (isinstance(response_data, dict) and ("base64Pdf" in response_data or "binary" in response_data))):
+            pdf_b64 = None
+            pdf_content = None
+            if isinstance(response_data, dict) and response_data.get("binary"):
+                pdf_content = response_data.get("binary")
+            else:
+                pdf_b64 = response_data if isinstance(response_data, str) else response_data.get("base64Pdf")
+                try:
+                    pdf_content = base64.b64decode(pdf_b64)
+                except Exception as e_decode:
+                    error_msg_for_toast = f"تعذر فك تشفير ملف {report_type}: {e_decode}"
+                    self._emit_global_log(f"تعذر فك تشفير PDF: {e_decode}", is_general=False, member_obj=member_obj, member_idx=main_list_idx)
             try:
-                pdf_content = base64.b64decode(pdf_b64)
+                if pdf_content is None:
+                    raise ValueError("لم يتم استلام محتوى PDF صالح")
                 safe_member_name_part = "".join(c for c in (member_obj.get_full_name_ar() or member_obj.nin) if c.isalnum() or c in (' ', '_', '-')).rstrip().replace(" ","_")
-                if not safe_member_name_part: safe_member_name_part = member_obj.nin 
-                final_filename = f"{filename_suffix_base}_{safe_member_name_part}.pdf" 
+                if not safe_member_name_part: safe_member_name_part = member_obj.nin
+                final_filename = f"{filename_suffix_base}_{safe_member_name_part}.pdf"
                 file_path = os.path.join(member_specific_dir, final_filename)
                 with open(file_path, 'wb') as f:
                     f.write(pdf_content)
@@ -1034,15 +1328,25 @@ class SingleMemberCheckThread(QThread):
     member_processing_finished_signal = pyqtSignal(int)      
     global_log_signal = pyqtSignal(str, bool, object, int) 
 
-    def __init__(self, member, index, api_client, settings, parent=None):
+    def __init__(self, member, index, api_client, settings, parent=None): 
         super().__init__(parent)
         self.member = member 
-        self.index = index   
-        self.api_client = api_client
+        self.index = index
+        self.api_client = api_client 
         self.settings = settings 
         self.is_running = True 
+        robot_settings = {
+            "base_global_interval_sec": max(6.0, float(self.settings.get("robot_base_interval_sec", 8))),
+            "burst_duration_min": int(self.settings.get("robot_burst_duration_min", 25)),
+            "freeze_has_rdv_days": int(self.settings.get("robot_freeze_has_rdv_days", 7)),
+            "rate_limit_pause_min_sec": int(self.settings.get("robot_rate_limit_pause_min_sec", 45 * 60)),
+            "rate_limit_pause_max_sec": int(self.settings.get("robot_rate_limit_pause_max_sec", 120 * 60)),
+            "rate_limit_window_sec": int(self.settings.get("robot_rate_limit_window_sec", 15 * 60)),
+            "rate_limit_threshold": int(self.settings.get("robot_rate_limit_threshold", 2)),
+        }
+        self.robot = RobotController(self.api_client, robot_settings)
 
-    def stop(self):
+    def stop(self): 
         self.is_running = False
         logger.info(f"طلب إيقاف خيط الفحص الفردي للعضو: {self.member.nin}")
 

@@ -68,6 +68,7 @@ SESSION = requests.Session()
 SESSION.headers.update({
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36',
     'Accept': 'application/json, text/plain, */*',
+    'Accept-Encoding': 'gzip, deflate, br, zstd',
     'Accept-Language': 'ar-DZ,ar;q=0.9,fr-FR;q=0.8,fr;q=0.7,en-US;q=0.6,en;q=0.5',
     'Origin': 'https://minha.anem.dz',
     'Referer': 'https://minha.anem.dz/',
@@ -75,7 +76,11 @@ SESSION.headers.update({
     'Sec-Fetch-Mode': 'cors',
     'Sec-Fetch-Site': 'same-site',
     'Cache-Control': 'no-cache',
-    'Pragma': 'no-cache'
+    'Pragma': 'no-cache',
+    'Connection': 'keep-alive',
+    'sec-ch-ua': '"Not)A;Brand";v="99", "Google Chrome";v="127", "Chromium";v="127"',
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-platform': '"Windows"'
 })
 
 # --- Settings Keys (used for consistency in accessing settings dict) ---
@@ -85,6 +90,27 @@ SETTING_MONITORING_INTERVAL = "monitoring_interval"
 SETTING_BACKOFF_429 = "backoff_429"
 SETTING_BACKOFF_GENERAL = "backoff_general"
 SETTING_REQUEST_TIMEOUT = "request_timeout"
+SETTING_ROBOT_ENABLED = "robot_enabled"
+SETTING_ROBOT_BASE_INTERVAL = "robot_base_interval_sec"
+SETTING_ROBOT_BURST_MIN = "robot_burst_duration_min"
+SETTING_ROBOT_FREEZE_HAS_RDV_DAYS = "robot_freeze_has_rdv_days"
+SETTING_ROBOT_RATE_LIMIT_PAUSE_MIN = "robot_rate_limit_pause_min_sec"
+SETTING_ROBOT_RATE_LIMIT_PAUSE_MAX = "robot_rate_limit_pause_max_sec"
+SETTING_ROBOT_RATE_LIMIT_WINDOW = "robot_rate_limit_window_sec"
+SETTING_ROBOT_RATE_LIMIT_THRESHOLD = "robot_rate_limit_threshold"
+
+# --- Request pacing configuration (per endpoint) ---
+# هذه القيم تضيف حداً أدنى للفاصل الزمني بين الطلبات الحساسة لتجنب الحظر
+ENDPOINT_MIN_REQUEST_INTERVALS = {
+    "RendezVous/GetAvailableDates": 3.0,  # ثانية
+    "RendezVous/Create": 6.0,
+}
+
+# مدة التهدئة الإضافية بعد استلام 429 لنفس المسار (ثواني)
+ENDPOINT_429_COOLDOWN = 90.0
+
+# مدى العشوائية المضافة للفواصل الزمنية لتقليد المتصفح وتخفيف الحظر
+PACING_JITTER_RANGE = (0.25, 0.9)
 
 # --- Default Settings (if settings file is missing or corrupted) ---
 DEFAULT_SETTINGS = {
@@ -93,7 +119,15 @@ DEFAULT_SETTINGS = {
     SETTING_MONITORING_INTERVAL: 1,
     SETTING_BACKOFF_429: 60,
     SETTING_BACKOFF_GENERAL: 5,
-    SETTING_REQUEST_TIMEOUT: 30
+    SETTING_REQUEST_TIMEOUT: 30,
+    SETTING_ROBOT_ENABLED: True,
+    SETTING_ROBOT_BASE_INTERVAL: 8,
+    SETTING_ROBOT_BURST_MIN: 25,
+    SETTING_ROBOT_FREEZE_HAS_RDV_DAYS: 7,
+    SETTING_ROBOT_RATE_LIMIT_PAUSE_MIN: 30 * 60,
+    SETTING_ROBOT_RATE_LIMIT_PAUSE_MAX: 120 * 60,
+    SETTING_ROBOT_RATE_LIMIT_WINDOW: 15 * 60,
+    SETTING_ROBOT_RATE_LIMIT_THRESHOLD: 2,
 }
 
 # --- Retry Mechanism Constants (used by AnemAPIClient) ---
