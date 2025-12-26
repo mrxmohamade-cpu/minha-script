@@ -338,6 +338,9 @@ class FirebaseService:
             else:
                 logger.warning(f"FirebaseService (User): Code '{code_id}' not found.")
                 return None, "كود التفعيل غير موجود."
+        except google_auth_exceptions.RefreshError as e:
+            self._handle_auth_error(f"fetching code '{code_id}'", e)
+            return None, "تعذر الاتصال بخدمة التفعيل (خطأ مصادقة)."
         except Exception as e:
             logger.exception(f"FirebaseService (User): Error fetching code '{code_id}': {e}")
             return None, f"خطأ في الاتصال بالخادم: {e}"
@@ -493,6 +496,9 @@ class FirebaseService:
 
         if error_msg or not code_data:
             logger.error(f"FirebaseService (User): Error fetching code '{local_code_id}' for online verification: {error_msg}")
+            is_local, _, _, local_data = self.check_local_activation()
+            if is_local and local_data and local_data.get("activation_code") == local_code_id and local_data.get("activated_by_device_id") == local_device_id:
+                return True, "تم التحقق محليًا (تعذر الاتصال بالخادم).", local_data
             return False, f"فشل التحقق من حالة الاشتراك عبر الإنترنت: {error_msg}", None
 
         status = code_data.get("status", "UNKNOWN").upper()
