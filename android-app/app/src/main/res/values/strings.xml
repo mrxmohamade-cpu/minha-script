@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Minha Script</string>
+    <string name="app_title">Minha Script</string>
+    <string name="app_description">Aplicativo Android em Kotlin pronto para uso no Android Studio.</string>
+    <string name="status_loading">Status: preparando…</string>
+    <string name="status_ready">Status: pronto para começar.</string>
+</resources>
