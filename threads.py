@@ -324,7 +324,15 @@ class MonitoringThread(QThread):
 
 
     def run(self):
-        statuses_to_completely_skip_monitoring = ["مستفيد حاليًا من المنحة"]
+        statuses_to_completely_skip_monitoring = [
+            "مستفيد حاليًا من المنحة",
+            "مستفيد حاليا من المنحة",
+            "مكتمل",
+            "غير مؤهل للحجز",
+            "غير مؤهل مبدئيًا",
+            "بيانات الإدخال خاطئة",
+            "لديه موعد مسبق",
+        ]
         statuses_for_pdf_check_only = ["مكتمل", "لديه موعد مسبق"] 
         self._emit_robot_status()
         mode_logged = False
@@ -363,13 +371,31 @@ class MonitoringThread(QThread):
                         continue
                     if now_ts < state.next_allowed_check_at:
                         cooling_members += 1
+                        continue
                     eligible_members.append(member_obj)
 
                 if not eligible_members:
                     if now_ts - self._last_excluded_log_at > 600:
                         self._last_excluded_log_at = now_ts
-                        self._emit_global_log("لا يوجد أعضاء مؤهلين للمراقبة.", is_general=True)
-                    idle_wait = int(random.uniform(30 * 60, 120 * 60))
+                        earliest_active = min(
+                            (
+                                self.robot.scheduler.state_for(self._get_member_key(m)).next_allowed_check_at
+                                for m in self.members_list_ref
+                                if self.robot.scheduler.state_for(self._get_member_key(m)).monitoring_mode == "ACTIVE"
+                                and self.robot.scheduler.state_for(self._get_member_key(m)).next_allowed_check_at
+                            ),
+                            default=0,
+                        )
+                        earliest_dt = (
+                            time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(earliest_active))
+                            if earliest_active
+                            else "--"
+                        )
+                        self._emit_global_log(
+                            f"ملخص الروبوت: eligible=0, cooling={cooling_members}, excluded={excluded_members}, earliest_next={earliest_dt}",
+                            is_general=True,
+                        )
+                    idle_wait = self.robot.next_wait_seconds() or int(random.uniform(30 * 60, 120 * 60))
                     self._wait_with_countdown(idle_wait, "استئناف الروبوت بعد: ")
                     if not self.is_running:
                         break
@@ -411,6 +437,7 @@ class MonitoringThread(QThread):
                 logger.info("بدء الفحص الأولي لجميع الأعضاء عند بدء المراقبة...")
                 self._emit_global_log("جاري الفحص الأولي لجميع الأعضاء...")
                 self.robot.start_round()
+                self._log_robot_round_decisions("initial")
                 
                 initial_scan_members_list = list(self.members_list_ref) 
 
@@ -454,7 +481,11 @@ class MonitoringThread(QThread):
                             self.update_member_gui_signal.emit(initial_scan_idx, member_to_process.status, member_to_process.last_activity_detail, get_icon_name_for_status(member_to_process.status))
                             self.member_being_processed_signal.emit(initial_scan_idx, False)
                             if self.robot_enabled:
-                                self._record_robot_result(member_to_process, ResultType.BENEFICIARY)
+                                skip_result = self.robot.classifier.classify(
+                                    member_to_process.status,
+                                    member_to_process.last_activity_detail,
+                                )
+                                self._record_robot_result(member_to_process, skip_result)
                             if self.is_running: time.sleep(SHORT_SKIP_DELAY_SECONDS)
                             continue
 
@@ -577,6 +608,7 @@ class MonitoringThread(QThread):
             logger.info(f"بدء دورة مراقبة دورية... (من الفهرس {self.current_member_index_to_process}) عدد الأعضاء الكلي: {len(current_members_snapshot_indices)}")
             self._emit_global_log(f"بدء دورة مراقبة دورية... ({time.strftime('%H:%M:%S')})")
             self.robot.start_round()
+            self._log_robot_round_decisions("periodic")
 
             processed_in_this_cycle = False 
 
@@ -620,7 +652,11 @@ class MonitoringThread(QThread):
                     self.update_member_gui_signal.emit(main_list_idx, member_to_process.status, member_to_process.last_activity_detail, get_icon_name_for_status(member_to_process.status))
                     self.member_being_processed_signal.emit(main_list_idx, False) 
                     if self.robot_enabled:
-                        self._record_robot_result(member_to_process, ResultType.BENEFICIARY)
+                        skip_result = self.robot.classifier.classify(
+                            member_to_process.status,
+                            member_to_process.last_activity_detail,
+                        )
+                        self._record_robot_result(member_to_process, skip_result)
                     if self.is_running: time.sleep(SHORT_SKIP_DELAY_SECONDS)
                     self.current_member_index_to_process = (main_list_idx + 1) % len(self.members_list_ref) if self.members_list_ref else 0
                     continue 
@@ -787,6 +823,34 @@ class MonitoringThread(QThread):
             detail_text,
             get_icon_name_for_status(member_obj.status)
         )
+
+    def _log_robot_round_decisions(self, round_label):
+        if not self.robot_enabled:
+            return
+        now_ts = time.time()
+        decisions = []
+        for idx, member_obj in enumerate(list(self.members_list_ref)):
+            member_key = self._get_member_key(member_obj)
+            state = self.robot.scheduler.state_for(member_key)
+            next_allowed = state.next_allowed_check_at
+            if state.monitoring_mode != "ACTIVE":
+                reason = f"excluded:{state.monitoring_mode}"
+            elif self.robot.scheduler.is_paused(now_ts):
+                reason = "paused"
+            elif state.last_round_processed == self.robot.scheduler.round_id:
+                reason = "already_processed"
+            elif now_ts < next_allowed:
+                reason = "cooldown"
+            elif not self.robot.scheduler.rate_limiter.allow(now_ts):
+                reason = "global_rate_limit"
+            else:
+                reason = "eligible"
+            decisions.append(
+                f"{self._get_member_display_name_with_index_from_thread(member_obj, idx)}"
+                f" -> {reason} (next={time.strftime('%H:%M:%S', time.localtime(next_allowed)) if next_allowed else '--'})"
+            )
+        if decisions:
+            logger.debug(f"ROBOT_ROUND[{round_label}] decisions: " + " | ".join(decisions))
 
     def _emit_robot_status(self):
         if not self.robot_enabled:

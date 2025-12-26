@@ -20,7 +20,8 @@ class ResultType(str, Enum):
 
 class ResultClassifier:
     def classify(self, status_text, error_text, data=None, http_status=None):
-        status = status_text or ""
+        status = (status_text or "").strip()
+        normalized_status = status.replace("حاليًا", "حاليا")
         error = (error_text or "").lower()
 
         if http_status in {401, 403} or "captcha" in error or "forbidden" in error:
@@ -32,20 +33,34 @@ class ResultClassifier:
         if "timeout" in error or "connection" in error or "network" in error:
             return ResultType.NETWORK_ERROR
 
-        if status in ["فشل التحقق", "فشل جلب المعلومات", "فشل جلب التواريخ", "فشل الحجز", "خطأ في المعالجة"]:
+        error_statuses = {
+            "فشل التحقق",
+            "فشل جلب المعلومات",
+            "فشل جلب التواريخ",
+            "فشل الحجز",
+            "خطأ في المعالجة",
+        }
+        if normalized_status in error_statuses:
             return ResultType.ERROR_RETRYABLE
-        if status in ["لا توجد مواعيد", "تم التحقق", "تم جلب المعلومات", "جاري جلب الاسم..."]:
-            return ResultType.NO_DATES
-        if status in ["تم الحجز", "لديه موعد مسبق"]:
-            return ResultType.HAS_RDV
-        if status in ["مكتمل"]:
-            return ResultType.COMPLETED
-        if status in ["مستفيد حاليًا من المنحة"]:
-            return ResultType.BENEFICIARY
-        if status in ["يتطلب تسجيل مسبق"]:
-            return ResultType.NEEDS_PREINSCRIPTION
-        if status in ["غير مؤهل للحجز", "بيانات الإدخال خاطئة", "غير مؤهل مبدئيًا"]:
-            return ResultType.INELIGIBLE
-        if status in ["جاري البحث عن مواعيد..."] and data and data.get("dates"):
+        if normalized_status in ["جاري البحث عن مواعيد..."] and data and data.get("dates"):
             return ResultType.HAS_DATES
+        no_date_statuses = {
+            "لا توجد مواعيد",
+            "تم التحقق",
+            "تم جلب المعلومات",
+            "جاري جلب الاسم...",
+            "جاري البحث عن مواعيد...",
+        }
+        if normalized_status in no_date_statuses:
+            return ResultType.NO_DATES
+        if normalized_status in ["تم الحجز", "لديه موعد مسبق"]:
+            return ResultType.HAS_RDV
+        if normalized_status in ["مكتمل"]:
+            return ResultType.COMPLETED
+        if normalized_status in ["مستفيد حاليا من المنحة"]:
+            return ResultType.BENEFICIARY
+        if normalized_status in ["يتطلب تسجيل مسبق"]:
+            return ResultType.NEEDS_PREINSCRIPTION
+        if normalized_status in ["غير مؤهل للحجز", "بيانات الإدخال خاطئة", "غير مؤهل مبدئيًا"]:
+            return ResultType.INELIGIBLE
         return ResultType.UNKNOWN

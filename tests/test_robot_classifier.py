@@ -32,3 +32,15 @@ class RobotClassifierTests(unittest.TestCase):
     def test_no_dates(self):
         result = self.classifier.classify("لا توجد مواعيد", "")
         self.assertEqual(result, self.ResultType.NO_DATES)
+
+    def test_searching_is_no_dates(self):
+        result = self.classifier.classify("جاري البحث عن مواعيد...", "")
+        self.assertEqual(result, self.ResultType.NO_DATES)
+
+    def test_beneficiary_normalization(self):
+        result = self.classifier.classify("مستفيد حاليا من المنحة", "")
+        self.assertEqual(result, self.ResultType.BENEFICIARY)
+
+    def test_fetch_fail_is_retryable(self):
+        result = self.classifier.classify("فشل جلب التواريخ", "")
+        self.assertEqual(result, self.ResultType.ERROR_RETRYABLE)

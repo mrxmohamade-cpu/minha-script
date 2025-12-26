@@ -41,3 +41,15 @@ class RobotSchedulerTests(unittest.TestCase):
         member_id = "m2"
         self.scheduler.record_result(member_id, self.ResultType.RATE_LIMIT)
         self.assertTrue(self.scheduler.is_paused())
+
+    def test_no_dates_cooldown_range(self):
+        member_id = "m3"
+        cooldown, _ = self.scheduler.record_result(member_id, self.ResultType.NO_DATES)
+        self.assertGreaterEqual(cooldown, 6 * 60 * 60)
+        self.assertLessEqual(cooldown, 24 * 60 * 60)
+
+    def test_terminal_disables_member(self):
+        member_id = "m4"
+        self.scheduler.record_result(member_id, self.ResultType.COMPLETED)
+        state = self.scheduler.state_for(member_id)
+        self.assertEqual(state.monitoring_mode, "DISABLED")
