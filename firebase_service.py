@@ -106,9 +106,13 @@ class FirebaseService:
             except (
                 google_exceptions.ServiceUnavailable,
                 google_exceptions.DeadlineExceeded,
+                google_auth_exceptions.RefreshError,
                 google_auth_exceptions.TransportError,
                 requests.exceptions.RequestException,
             ) as e:
+                if isinstance(e, google_auth_exceptions.RefreshError):
+                    self._handle_auth_error(f"{description} (refresh token)", e)
+                    raise
                 last_exc = e
                 wait_time = base_sleep * attempt
                 logger.warning(
@@ -132,6 +136,18 @@ class FirebaseService:
         if last_exc:
             raise last_exc
         raise RuntimeError(f"Unknown error while {description}")
+
+    def _handle_auth_error(self, context: str, error: Exception):
+        logger.error(
+            "FirebaseService (User): Authentication error during %s. Disabling Firebase usage. Details: %s",
+            context,
+            error,
+        )
+        self.app_initialized = False
+        self.db = None
+        for code_id in list(self._code_listeners.keys()):
+            self.stop_listening_to_code_changes(code_id)
+        self.stop_listening_to_app_messages()
 
     def is_initialized(self):
         return self.app_initialized and self.db is not None
@@ -652,6 +668,11 @@ class FirebaseService:
                 docs = list(query.stream())
                 logger.debug("FirebaseService (User): Polled %s active messages.", len(docs))
                 self._process_app_message_docs(docs, callback_on_update)
+            except google_auth_exceptions.RefreshError as e:
+                self._handle_auth_error("polling app messages", e)
+                if callback_on_update:
+                    callback_on_update([], "تعذر التحقق من رسائل التطبيق بسبب خطأ مصادقة.")
+                return
             except google_exceptions.Cancelled as e:
                 logger.warning("FirebaseService (User): App messages polling cancelled (likely idle). Continuing. Details: %s", e)
                 continue
