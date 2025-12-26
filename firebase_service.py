@@ -110,7 +110,7 @@ class FirebaseService:
                 google_auth_exceptions.TransportError,
                 requests.exceptions.RequestException,
             ) as e:
-                if isinstance(e, google_auth_exceptions.RefreshError):
+                if isinstance(e, google_auth_exceptions.RefreshError) or self._is_auth_invalid_grant(e):
                     self._handle_auth_error(f"{description} (refresh token)", e)
                     raise
                 last_exc = e
@@ -136,6 +136,10 @@ class FirebaseService:
         if last_exc:
             raise last_exc
         raise RuntimeError(f"Unknown error while {description}")
+
+    def _is_auth_invalid_grant(self, error: Exception) -> bool:
+        message = str(error)
+        return "invalid_grant" in message or "Invalid JWT" in message
 
     def _handle_auth_error(self, context: str, error: Exception):
         logger.error(
@@ -341,6 +345,12 @@ class FirebaseService:
         except google_auth_exceptions.RefreshError as e:
             self._handle_auth_error(f"fetching code '{code_id}'", e)
             return None, "تعذر الاتصال بخدمة التفعيل (خطأ مصادقة)."
+        except google_exceptions.ServiceUnavailable as e:
+            if self._is_auth_invalid_grant(e):
+                self._handle_auth_error(f"fetching code '{code_id}'", e)
+                return None, "تعذر الاتصال بخدمة التفعيل (خطأ مصادقة)."
+            logger.exception(f"FirebaseService (User): Error fetching code '{code_id}': {e}")
+            return None, f"خطأ في الاتصال بالخادم: {e}"
         except Exception as e:
             logger.exception(f"FirebaseService (User): Error fetching code '{code_id}': {e}")
             return None, f"خطأ في الاتصال بالخادم: {e}"
