@@ -1,7 +1,14 @@
 <resources>
     <string name="app_name">Minha Script</string>
-    <string name="app_title">Minha Script</string>
-    <string name="app_description">Aplicativo Android em Kotlin pronto para uso no Android Studio.</string>
-    <string name="status_loading">Status: preparando…</string>
-    <string name="status_ready">Status: pronto para começar.</string>
+    <string name="app_title">برنامج إدارة المواعيد</string>
+    <string name="empty_state">لا توجد بيانات حتى الآن. اضغط + لإضافة عضو.</string>
+    <string name="add_member_title">إضافة عضو</string>
+    <string name="add_member_action">إضافة</string>
+    <string name="cancel_action">إلغاء</string>
+    <string name="delete_member">حذف</string>
+    <string name="label_nin">رقم التعريف الوطني (NIN)</string>
+    <string name="label_wassit">رقم وسيط</string>
+    <string name="label_ccp">رقم CCP</string>
+    <string name="label_phone">رقم الهاتف</string>
+    <string name="add_member_validation">يرجى إدخال NIN ورقم وسيط وCCP.</string>
 </resources>

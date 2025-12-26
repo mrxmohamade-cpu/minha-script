@@ -2,7 +2,7 @@
 
 ## Android (Kotlin)
 
-هذا المستودع يحتوي على مشروع Android جاهز لفتحه في Android Studio.
+تم تحويل المشروع إلى تطبيق Android بسيط بكوتلن يركز على إدارة الأعضاء محليًا (إضافة/حذف وحفظ البيانات داخل الجهاز).
 
 ### طريقة التشغيل
 
@@ -28,4 +28,6 @@
 ### أهم الملفات
 
 - `android-app/app/src/main/java/com/minhascript/app/MainActivity.kt`
+- `android-app/app/src/main/java/com/minhascript/app/MemberRepository.kt`
 - `android-app/app/src/main/res/layout/activity_main.xml`
+- `android-app/app/src/main/res/layout/dialog_add_member.xml`
