@@ -1,4 +1,4 @@
-import 'package:riverpod/riverpod.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/datasources/remote/api_client.dart';
 import '../../data/repositories/activation_repository.dart';

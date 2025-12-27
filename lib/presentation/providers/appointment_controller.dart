@@ -1,4 +1,4 @@
-import 'package:riverpod/riverpod.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/appointment.dart';
 import 'app_providers.dart';
