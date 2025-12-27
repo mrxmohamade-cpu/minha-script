@@ -6,7 +6,10 @@ pluginManagement {
     }
     def flutterSdkPath = {
         def properties = new Properties()
-        file('local.properties').withInputStream { properties.load(it) }
+        def localProperties = file('local.properties')
+        if (localProperties.exists()) {
+            localProperties.withInputStream { properties.load(it) }
+        }
         def sdkPath = properties.getProperty('flutter.sdk')
         assert sdkPath != null, "flutter.sdk not set in local.properties"
         return sdkPath
@@ -21,7 +24,7 @@ pluginManagement {
 }
 
 dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
     repositories {
         google()
         mavenCentral()
